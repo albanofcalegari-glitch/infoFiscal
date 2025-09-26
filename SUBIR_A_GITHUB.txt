@@ -1,0 +1,85 @@
+🚀 INSTRUCCIONES PARA SUBIR A GITHUB
+=====================================
+
+Tu proyecto ya está preparado localmente con Git. Ahora necesitas crear el repositorio en GitHub:
+
+📋 PASOS PARA GITHUB:
+---------------------
+
+1. **Ir a GitHub**:
+   - Abrir: https://github.com
+   - Hacer login con tu cuenta
+
+2. **Crear Nuevo Repositorio**:
+   - Hacer clic en el botón verde "New" o "+"
+   - Nombre del repositorio: **infofiscal**
+   - Descripción: "Sistema de Gestión Contable con Integración AFIP"
+   - ✅ Público (recomendado) o Privado (si prefieres)
+   - ❌ NO marcar "Add README" (ya lo tenemos)
+   - ❌ NO marcar "Add .gitignore" (ya lo tenemos)
+   - ❌ NO agregar licencia (ya la tenemos)
+   - Hacer clic en **"Create repository"**
+
+3. **Conectar Repositorio Local**:
+   Una vez creado el repo en GitHub, ejecutar estos comandos:
+
+```bash
+# Agregar el repositorio remoto (reemplaza TU-USUARIO)
+git remote add origin https://github.com/TU-USUARIO/infofiscal.git
+
+# Subir el código a GitHub
+git branch -M main
+git push -u origin main
+```
+
+📁 EJEMPLO DE COMANDOS:
+-----------------------
+```bash
+# Si tu usuario es "juanperez", sería:
+git remote add origin https://github.com/juanperez/infofiscal.git
+git branch -M main  
+git push -u origin main
+```
+
+🔐 AUTENTICACIÓN:
+-----------------
+GitHub te pedirá autenticación:
+- **Personal Access Token** (recomendado)
+- O configurar **SSH keys**
+
+✅ QUÉ INCLUYE EL REPOSITORIO:
+------------------------------
+✅ Código fuente completo (src/)
+✅ Templates HTML y CSS
+✅ Scripts de configuración  
+✅ Documentación completa (README.md)
+✅ Guías de instalación y uso
+✅ Monitoreo automático AFIP
+✅ Sistema de delegaciones
+
+❌ QUÉ NO INCLUYE (por seguridad):
+----------------------------------  
+❌ Certificados AFIP (.crt, .key)
+❌ Base de datos con usuarios
+❌ Archivos de configuración local
+❌ Facturas descargadas
+❌ Logs del sistema
+
+🌟 DESPUÉS DE SUBIR:
+--------------------
+1. Tu proyecto estará disponible públicamente
+2. Otros desarrolladores pueden contribuir
+3. Backup automático en la nube
+4. Control de versiones profesional
+5. Issues y mejoras colaborativas
+
+💡 PRÓXIMOS PASOS:
+------------------
+1. Crear el repo en GitHub
+2. Conectar con git remote add
+3. Hacer git push
+4. ¡Compartir el enlace!
+
+🔗 El enlace será: https://github.com/TU-USUARIO/infofiscal
+
+¡Cuando lo hayas subido, me pasas el enlace! 🎉
