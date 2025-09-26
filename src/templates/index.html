@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>InfoFiscal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+</head>
+<body>
+    <div class="header" style="position:relative;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="min-width:140px;">
+                <a href="/home" style="color:#fff; text-decoration:none; font-weight:700; font-size:1.15em; padding:4px 10px; border-radius:4px;">InfoFiscal</a>
+            </div>
+            <nav style="min-width:140px;">
+                <ul style="list-style:none; margin:0; padding:0; display:flex; gap:12px; align-items:center;">
+                    <li><a href="#" style="color:#fff; text-decoration:none; font-weight:500; padding:4px 10px; border-radius:4px; transition:background 0.2s;">Inicio</a></li>
+                    <li style="position:relative;">
+                        <a href="#" style="color:#fff; text-decoration:none; font-weight:500; padding:4px 10px; border-radius:4px; transition:background 0.2s;" onmouseover="showClientesMenu()" onmouseout="hideClientesMenu()">Clientes ▼</a>
+                        <ul id="clientesMenu" style="display:none; position:absolute; left:0; top:28px; background:#fff; color:#1a355e; border:1px solid #bfc9d1; border-radius:5px; min-width:140px; box-shadow:0 2px 8px rgba(26,53,94,0.10); padding:0; margin:0; z-index:20;">
+                            <li><a href="/nuevo-cliente" style="display:block; padding:8px 16px; color:#1a355e; text-decoration:none; font-weight:500; border-radius:5px 5px 0 0;">Nuevo cliente</a></li>
+                            <li><a href="#consultar-cliente" onclick="mostrarBuscarCliente(); return false;" style="display:block; padding:8px 16px; color:#1a355e; text-decoration:none; font-weight:500; border-radius:0 0 5px 5px;">Consultar cliente</a></li>
+                        </ul>
+                    </li>
+                    {% if usuario == 'admin' %}
+                    <li><a href="#desbloquear" style="color:#fff; text-decoration:none; font-weight:500; padding:4px 10px; border-radius:4px; transition:background 0.2s;">Desbloquear usuario</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+            <script>
+            function showClientesMenu() {
+                document.getElementById('clientesMenu').style.display = 'block';
+            }
+            function hideClientesMenu() {
+                setTimeout(function() {
+                    if (!document.getElementById('clientesMenu').matches(':hover')) {
+                        document.getElementById('clientesMenu').style.display = 'none';
+                    }
+                }, 200);
+            }
+            document.getElementById('clientesMenu').addEventListener('mouseleave', hideClientesMenu);
+            document.getElementById('clientesMenu').addEventListener('mouseenter', showClientesMenu);
+            </script>
+            <div style="flex:1;"></div>
+            <div style="position:relative;">
+                <div class="user-menu" style="display:inline-block; position:relative;">
+                    <button id="userBtn" style="background:none; border:none; cursor:pointer; font-size:1em; padding:0; margin:0;">
+                        <span style="vertical-align:middle; font-size:1.1em;">👤</span>
+                    </button>
+                    <div id="userDropdown" style="display:none; position:absolute; right:0; background:#fff; border:1px solid #bfc9d1; border-radius:5px; box-shadow:0 2px 8px rgba(26,53,94,0.10); min-width:120px; z-index:10; font-size:0.95em;">
+                        <div style="padding:7px 12px; border-bottom:1px solid #eee; color:#1a355e; font-weight:500;">{{ usuario }}</div>
+                        <a href="{{ url_for('logout') }}" style="display:block; padding:7px 12px; color:#c00; text-decoration:none; font-weight:500;">Cerrar sesión</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    const userBtn = document.getElementById('userBtn');
+    const userDropdown = document.getElementById('userDropdown');
+    userBtn.addEventListener('mouseenter', () => {
+        userDropdown.style.display = 'block';
+    });
+    userBtn.addEventListener('mouseleave', () => {
+        setTimeout(() => { if (!userDropdown.matches(':hover')) userDropdown.style.display = 'none'; }, 200);
+    });
+    userDropdown.addEventListener('mouseleave', () => {
+        userDropdown.style.display = 'none';
+    });
+    userDropdown.addEventListener('mouseenter', () => {
+        userDropdown.style.display = 'block';
+    });
+    </script>
+    <div id="buscarClienteModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(26,53,94,0.10); z-index:100; align-items:center; justify-content:center;">
+        <div style="background:#fff; border-radius:8px; box-shadow:0 2px 16px rgba(26,53,94,0.15); padding:32px 28px; min-width:320px; max-width:90vw;">
+            <h3 style="margin-top:0; color:#1a355e;">Consultar cliente</h3>
+    <div id="grillaCliente" style="display:none; margin:32px auto 0 auto; max-width:600px;">
+        <h3 style="color:#1a355e;">Datos del cliente seleccionado</h3>
+        <table style="width:100%; border-collapse:collapse; background:#fff; box-shadow:0 2px 8px rgba(26,53,94,0.08);">
+            <thead>
+                <tr style="background:#f3f6fa; color:#1a355e;">
+                    <th style="padding:10px 8px; border-bottom:1px solid #bfc9d1;">Apellido</th>
+                    <th style="padding:10px 8px; border-bottom:1px solid #bfc9d1;">Nombre</th>
+                    <th style="padding:10px 8px; border-bottom:1px solid #bfc9d1;">DNI</th>
+                    <th style="padding:10px 8px; border-bottom:1px solid #bfc9d1;">CUIT</th>
+                </tr>
+            </thead>
+            <tbody id="grillaClienteBody"></tbody>
+        </table>
+    </div>
+
+    <form id="formBuscarCliente" onsubmit="buscarCliente(event)">
+                <label for="busquedaCliente" style="font-weight:500;">CUIT o DNI</label>
+                <input type="text" id="busquedaCliente" name="busqueda" placeholder="Ingrese CUIT o DNI" style="width:100%; padding:8px; margin:10px 0 18px 0; border:1px solid #bfc9d1; border-radius:5px; font-size:1rem;">
+                <div style="display:flex; gap:12px; justify-content:center;">
+                    <button type="submit" style="height:40px; min-width:120px; font-size:1rem; font-weight:700; border-radius:5px;">Buscar</button>
+                    <button type="button" onclick="ocultarBuscarCliente()" style="height:40px; min-width:120px; font-size:1rem; font-weight:700; border-radius:5px; background:#bfc9d1; color:#222;">Cerrar</button>
+                </div>
+            </form>
+            <div id="popupCliente" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(26,53,94,0.18); z-index:200; align-items:center; justify-content:center;">
+                <div style="background:#fff; border-radius:8px; box-shadow:0 2px 16px rgba(26,53,94,0.15); padding:32px 28px; min-width:320px; max-width:90vw; text-align:left;">
+                    <div id="popupClienteContenido"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    function mostrarBuscarCliente() {
+        document.getElementById('buscarClienteModal').style.display = 'flex';
+        setTimeout(function(){ document.getElementById('busquedaCliente').focus(); }, 200);
+    }
+    function ocultarBuscarCliente() {
+        document.getElementById('buscarClienteModal').style.display = 'none';
+    }
+    let ultimoCliente = null;
+    function buscarCliente(e) {
+        e.preventDefault();
+        var busqueda = document.getElementById('busquedaCliente').value.trim();
+        if (!busqueda) {
+            mostrarPopup('<span style="color:#c00;">Ingrese CUIT o DNI</span>');
+            return;
+        }
+        fetch('/consultar-cliente?busqueda=' + encodeURIComponent(busqueda))
+            .then(r => r.json().then(data => ({status: r.status, body: data})))
+            .then(res => {
+                if (res.status === 200) {
+                    const c = res.body;
+                    ultimoCliente = c;
+                    mostrarPopup('<div style="padding:12px 0; text-align:left;">'+
+                        '<b>Apellido:</b> ' + c.apellido + '<br>' +
+                        '<b>Nombre:</b> ' + c.nombres + '<br>' +
+                        '<b>DNI:</b> ' + c.dni + '<br>' +
+                        '<b>CUIT:</b> ' + c.cuit + '<br>' +
+                        '</div>' +
+                        '<div style="text-align:center; margin-top:16px;">'+
+                        '<button onclick="avanzarConCliente()" style="height:38px; min-width:120px; font-size:1rem; font-weight:700; border-radius:5px;">Confirmar</button>'+
+                        '</div>'
+                    );
+                } else {
+                    mostrarPopup('<span style="color:#c00;">' + (res.body.error || 'No encontrado') + '</span>');
+                }
+            })
+            .catch(() => mostrarPopup('<span style="color:#c00;">Error de conexión</span>'));
+    }
+    function mostrarPopup(html) {
+        var popup = document.getElementById('popupCliente');
+        var contenido = document.getElementById('popupClienteContenido');
+        contenido.innerHTML = html;
+        popup.style.display = 'flex';
+    }
+    function avanzarConCliente() {
+        if (ultimoCliente) {
+            fetch('/set-cliente-seleccionado', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(ultimoCliente)
+            })
+            .then(() => {
+                window.location.href = '/consultafacturacliente';
+            });
+        }
+        document.getElementById('popupCliente').style.display = 'none';
+        ocultarBuscarCliente();
+    }
+    </script>
+</body>
+</html>

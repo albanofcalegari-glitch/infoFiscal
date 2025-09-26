@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Nuevo Cliente</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+</head>
+<body>
+    <div class="header" style="position:relative;">
+    <a href="/home" style="color:#fff; text-decoration:none; font-weight:500; padding:4px 10px; border-radius:4px;">&larr; Volver</a>
+    </div>
+    <div class="main-container">
+        <h2>Alta de nuevo cliente</h2>
+        {% if mensaje %}
+            <div style="color:green; font-weight:500; margin-bottom:12px;">{{ mensaje }}</div>
+        {% endif %}
+        <form method="post">
+            <label for="tipoDocumento">Tipo de Documento</label>
+            <input type="text" id="tipoDocumento" name="tipoDocumento" required>
+            <label for="nroDocumento">Nro. de Documento</label>
+            <input type="text" id="nroDocumento" name="nroDocumento" required>
+            <label for="CUIT">CUIT</label>
+            <input type="text" id="CUIT" name="CUIT">
+            <label for="apellido">Apellido</label>
+            <input type="text" id="apellido" name="apellido" required>
+            <label for="nombres">Nombres</label>
+            <input type="text" id="nombres" name="nombres" required>
+            <label for="fechaNacimiento">Fecha de Nacimiento</label>
+            <input type="date" id="fechaNacimiento" name="fechaNacimiento" style="width:100%; padding:8px; margin-top:5px; border:1px solid #bfc9d1; border-radius:5px; font-size:0.97rem; background:#f9fafb; transition:border 0.2s; box-sizing:border-box;">
+            <label for="condicionIVA">Condición IVA</label>
+            <input type="text" id="condicionIVA" name="condicionIVA">
+            <label for="categoriaMonotriibuto">Categoría Monotributo</label>
+            <input type="text" id="categoriaMonotriibuto" name="categoriaMonotriibuto">
+            <div style="margin-top:18px; display:flex; justify-content:center;">
+                <button type="submit" style="height:44px; font-size:1rem; font-weight:700; border-radius:5px; min-width:160px; padding:0 32px;">Confirmar</button>
+            </div>
+        </form>
+    </div>
+</body>
+</html>

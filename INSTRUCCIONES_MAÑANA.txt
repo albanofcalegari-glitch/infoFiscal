@@ -1,0 +1,36 @@
+🌅 INSTRUCCIONES PARA CUANDO DESPIERTES
+==========================================
+
+Si el monitor detectó que AFIP está activo, encontrarás:
+
+🔍 REVISAR EL LOG:
+------------------
+- Abrir: monitor_log.txt  
+- Buscar: "SERVICIOS ACTIVOS DETECTADOS!"
+- Ver la hora exacta de activación
+
+🎯 SI AFIP ESTÁ ACTIVO:
+-----------------------
+1. Ejecutar: python cambiar_modo.py produccion
+2. Reiniciar Flask (Ctrl+C y volver a ejecutar)
+3. ¡Probar descarga de facturas REALES!
+
+🔄 SI AÚN NO ESTÁ ACTIVO:
+-------------------------
+- El monitor sigue corriendo automáticamente
+- Revisar monitor_log.txt para ver el historial
+- Ejecutar manualmente: .\check.bat
+
+📱 VERIFICACIÓN RÁPIDA:
+-----------------------
+.\check.bat              # Verificación manual rápida
+type monitor_log.txt     # Ver log completo del monitor
+
+🚀 ACTIVAR PRODUCCIÓN:
+----------------------
+Cuando AFIP esté listo:
+python cambiar_modo.py produccion
+
+Luego reiniciar Flask y ¡listo para facturas reales!
+
+💤 Que descanses bien, el sistema sigue monitoreando...

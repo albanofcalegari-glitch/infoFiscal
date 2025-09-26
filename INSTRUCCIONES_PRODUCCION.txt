@@ -1,0 +1,78 @@
+🚀 PASOS PARA ACTIVAR SERVICIOS AFIP EN PRODUCCIÓN
+====================================================
+
+Tu aplicación está funcionando perfectamente en modo SIMULACIÓN.
+Para usar servicios reales de AFIP, sigue estos pasos:
+
+📋 PASO 1: ACCEDER A AFIP
+--------------------------
+1. Ir a: https://auth.afip.gob.ar/
+2. Ingresar con CUIT: 20-32151804-5 y tu Clave Fiscal
+
+🔍 PASO 2: BUSCAR ADMINISTRADOR DE RELACIONES
+----------------------------------------------
+En el menú principal, buscar:
+- "Administrador de Relaciones de Clave Fiscal" O
+- "Administración de Relaciones" O  
+- Usar el buscador: "administrador relaciones"
+
+👤 PASO 3: SELECCIONAR TU CUIT
+------------------------------
+- Seleccionar CUIT: 20-32151804-5
+- Hacer clic en "Continuar"
+
+🎯 PASO 4: HABILITAR SERVICIOS WEB
+----------------------------------
+Buscar y habilitar estos servicios:
+✅ "Web Service Facturación Electrónica" (WSFE)
+✅ "Comprobantes Electrónicos en Línea"
+✅ "Facturación Digital"
+
+Si NO aparecen:
+- Ir a "Nuevas Relaciones"
+- Buscar en categoría "Desarrolladores"
+- Buscar: "wsfe", "facturación", "web service"
+
+🔐 PASO 5: ASOCIAR CERTIFICADO
+------------------------------
+- Seleccionar el servicio encontrado
+- Hacer clic en "Nueva Relación"
+- IMPORTANTE: Asociar tu certificado digital
+- Confirmar la solicitud
+
+⏱️ PASO 6: ESPERAR ACTIVACIÓN
+-----------------------------
+- El proceso puede tomar de minutos a 24 HORAS
+- Verificar estado en "Mis Relaciones"
+- Debe aparecer como "ACTIVO"
+
+🔧 PASO 7: VERIFICAR Y ACTIVAR
+------------------------------
+Una vez que veas "ACTIVO" en AFIP:
+
+1. Ejecutar verificación:
+   python verificar_servicios.py
+
+2. Si todo está OK, activar producción:
+   python cambiar_modo.py produccion
+
+3. Reiniciar la aplicación Flask
+
+🎉 ¡LISTO PARA PRODUCCIÓN!
+--------------------------
+Tu aplicación descargará facturas reales de AFIP
+
+📞 SI TIENES PROBLEMAS:
+-----------------------
+- Llamar AFIP: 0800-999-2347
+- Preguntar: "Necesito habilitar servicios web para facturación electrónica"
+- Mencionar que tenés certificado digital generado
+
+⚠️ MIENTRAS TANTO:
+------------------
+Tu aplicación funciona perfectamente en modo simulación.
+Accede a: http://127.0.0.1:5000
+Usuario: admin
+Password: admin123
+
+¡El sistema de delegaciones ya está configurado y funcionando!

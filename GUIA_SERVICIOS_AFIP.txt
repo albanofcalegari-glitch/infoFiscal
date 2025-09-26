@@ -1,0 +1,55 @@
+GUÍA PASO A PASO PARA HABILITAR SERVICIOS WEB EN AFIP
+=======================================================
+
+🌐 PASO 1: INGRESAR A AFIP
+- Ir a: https://auth.afip.gob.ar/
+- Ingresar con tu CUIT: 20321518045 y Clave Fiscal
+
+📋 PASO 2: BUSCAR ADMINISTRADOR DE RELACIONES
+Opciones posibles en el menú:
+- "Administrador de Relaciones de Clave Fiscal"
+- "Administración de Relaciones"
+- "Relaciones Clave Fiscal"
+- En la lupa buscar: "administrador relaciones"
+
+👤 PASO 3: SELECCIONAR CONTRIBUYENTE
+- Seleccionar tu CUIT: 20321518045
+- Hacer clic en "Continuar" o "Seleccionar"
+
+🔍 PASO 4: BUSCAR SERVICIOS DE FACTURACIÓN
+Buscar servicios que contengan:
+- "Factura Electrónica"
+- "Comprobantes Electrónicos" 
+- "WSFE" o "Web Service"
+- "Facturación Digital"
+- "Monotributo" (si corresponde)
+
+Si NO aparecen, intentar:
+- Ir a "Nuevas Relaciones" o "Agregar Servicio"
+- Buscar en categoría "Desarrolladores"
+- Buscar en categoría "Facturación"
+
+📋 PASO 5: HABILITAR SERVICIO
+- Seleccionar el servicio encontrado
+- Hacer clic en "Nueva Relación"
+- Asociar tu certificado digital
+- Confirmar la solicitud
+
+⏱️ PASO 6: ESPERAR ACTIVACIÓN
+- El proceso puede tomar desde minutos hasta 24 horas
+- Verificar estado en "Mis Relaciones"
+- Debe aparecer como "ACTIVO"
+
+🔧 PASO 7: VERIFICAR CONFIGURACIÓN
+Una vez activo, ejecutar:
+python verificar_servicios.py
+
+📞 SI NO ENCONTRÁS LOS SERVICIOS:
+- Llamar AFIP: 0800-999-2347
+- Preguntar: "Necesito habilitar servicios web para facturación electrónica"
+- Mencionar que tenés certificado digital generado
+
+NOTAS IMPORTANTES:
+- Algunos CUITs pueden no tener acceso según su categoría
+- Verificar que tu actividad esté habilitada para facturación electrónica
+- El certificado DEBE estar válido y no vencido

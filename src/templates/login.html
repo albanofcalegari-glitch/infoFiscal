@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - InfoFiscal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+</head>
+<body>
+    <div class="header">InfoFiscal - Estudio Contable</div>
+    <div class="login-container">
+        <h2>Iniciar Sesión</h2>
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="post">
+            <label for="usuario">Usuario</label>
+            <input type="text" id="usuario" name="usuario" required style="width:100%; box-sizing:border-box;">
+            <label for="contrasena">Contraseña</label>
+            <div style="position:relative; width:100%;">
+                <input type="password" id="contrasena" name="contrasena" required style="width:100%; padding-right:2.2em; box-sizing:border-box;">
+                <button type="button" onclick="togglePassword()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#1a355e; font-size:1.2em; padding:0; margin:0; line-height:1; height:1.5em; width:1.8em; display:flex; align-items:center; justify-content:center;">👁️</button>
+            </div>
+            <button type="submit">Ingresar</button>
+            <script>
+            function togglePassword() {
+                var pwd = document.getElementById('contrasena');
+                if (pwd.type === 'password') {
+                    pwd.type = 'text';
+                } else {
+                    pwd.type = 'password';
+                }
+            }
+            </script>
+        </form>
+    </div>
+</body>
+</html>
