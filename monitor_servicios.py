@@ -40,7 +40,7 @@ def verificar_servicios_cada_minuto():
             key_path = Path(__file__).parent / 'certs' / 'clave_privada.key'
             
             # Crear servicio y probar
-            service = ARCAServiceSimple(cuit, cert_path, key_path, testing=True)
+            service = ARCAServiceSimple(cuit, cert_path, key_path, testing=False)  # PRODUCCION
             
             if service.authenticate_wsaa():
                 print()

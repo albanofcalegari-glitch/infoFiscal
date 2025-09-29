@@ -128,8 +128,8 @@
                     mostrarPopup('<div style="padding:12px 0; text-align:left;">'+
                         '<b>Apellido:</b> ' + c.apellido + '<br>' +
                         '<b>Nombre:</b> ' + c.nombres + '<br>' +
-                        '<b>DNI:</b> ' + c.dni + '<br>' +
-                        '<b>CUIT:</b> ' + c.cuit + '<br>' +
+                        '<b>' + (c.tipoDocumento ? c.tipoDocumento.toUpperCase() : 'DNI') + ':</b> ' + (c.nroDocumento || 'Sin especificar') + '<br>' +
+                        '<b>CUIT:</b> ' + (c.CUIT || 'Sin especificar') + '<br>' +
                         '</div>' +
                         '<div style="text-align:center; margin-top:16px;">'+
                         '<button onclick="avanzarConCliente()" style="height:38px; min-width:120px; font-size:1rem; font-weight:700; border-radius:5px;">Confirmar</button>'+

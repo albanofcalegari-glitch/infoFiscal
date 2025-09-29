@@ -1,0 +1,1 @@
+C:/Program Files/Git/usr/bin/openssl.exe smime -sign -in C:\Users\DELL\AppData\Local\Temp\tmpt8xzgosx.xml -out C:\Users\DELL\AppData\Local\Temp\tmpa5vk5xfh.cms -outform DER -inkey certs\clave_privada.key -signer certs\certificado.crt -nodetach -binary

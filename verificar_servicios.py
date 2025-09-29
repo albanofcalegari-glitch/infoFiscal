@@ -28,31 +28,33 @@ def verificar_servicios_afip():
     print("✅ Certificados OK")
     
     try:
-        # Crear servicio
-        service = ARCAServiceSimple(cuit, cert_path, key_path, testing=True)
+        # Crear servicio optimizado
+        service = ARCAServiceSimple(cuit, cert_path, key_path, testing=False)  # PRODUCCION
         
-        # Test conectividad
-        if not service.test_connection():
-            print("❌ Sin conectividad a AFIP")
+        # Verificar conectividad básica
+        from arca_service_simple import verificar_conexion_afip
+        conectividad, mensaje = verificar_conexion_afip()
+        if not conectividad:
+            print(f"❌ Sin conectividad a AFIP: {mensaje}")
             return False
         
         # Intentar autenticación WSAA
         print("🔄 Probando autenticación WSAA...")
-        if service.authenticate_wsaa():
+        auth_data = service.autenticar()
+        if auth_data and 'token' in auth_data:
             print("✅ AUTENTICACIÓN WSAA EXITOSA!")
             print("✅ SERVICIOS WEB HABILITADOS CORRECTAMENTE")
             
-            # Probar consulta WSFE
+            # Probar consulta WSFE básica
             print("🔄 Probando consulta WSFE...")
-            archivos = service.get_facturas_reales("20240901", "20240930", 
-                                                 Path(__file__).parent / 'test_facturas')
+            ultimo = service.wsfe_fecomp_ultimo_autorizado(1, 1)
             
-            if archivos:
+            if ultimo is not None:
                 print("✅ CONSULTA WSFE EXITOSA!")
-                print(f"Archivos generados: {len(archivos)}")
+                print(f"Último comprobante autorizado: {ultimo}")
                 return True
             else:
-                print("⚠️ WSFE responde pero sin datos")
+                print("⚠️ WSFE responde pero sin datos o sin permisos")
                 return True
                 
         else:

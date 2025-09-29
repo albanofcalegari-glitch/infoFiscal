@@ -71,27 +71,159 @@
                 </tbody>
             </table>
         </div>
-        <div style="margin-top:32px; display:flex; justify-content:center;">
-            <button id="descargarFacturasBtn" style="height:44px; min-width:180px; font-size:1rem; font-weight:700; border-radius:5px; background:#1a355e; color:#fff; border:none; cursor:pointer;">Descargar facturas</button>
+        
+        <!-- Controles de configuración para descarga -->
+        <div style="margin-top:24px; padding:20px; background:#f8f9fa; border-radius:8px; border:1px solid #dee2e6;">
+            <h4 style="margin:0 0 16px 0; color:#495057; font-size:1rem;">Configuración de Descarga</h4>
+            
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px;">
+                <div>
+                    <label for="fechaDesde" style="display:block; margin-bottom:4px; font-weight:600; color:#6c757d; font-size:0.9rem;">Desde:</label>
+                    <input type="date" id="fechaDesde" style="width:100%; padding:8px; border:1px solid #ced4da; border-radius:4px; font-size:0.9rem;">
+                </div>
+                <div>
+                    <label for="fechaHasta" style="display:block; margin-bottom:4px; font-weight:600; color:#6c757d; font-size:0.9rem;">Hasta:</label>
+                    <input type="date" id="fechaHasta" style="width:100%; padding:8px; border:1px solid #ced4da; border-radius:4px; font-size:0.9rem;">
+                </div>
+            </div>
+            
+            <div style="margin-bottom:16px;">
+                <label for="tiposIncluir" style="display:block; margin-bottom:4px; font-weight:600; color:#6c757d; font-size:0.9rem;">Tipos a incluir (opcional):</label>
+                <input type="text" id="tiposIncluir" placeholder="Ej: 1,6,11 (Facturas A,B,C)" style="width:100%; padding:8px; border:1px solid #ced4da; border-radius:4px; font-size:0.9rem;">
+                <small style="color:#6c757d; font-size:0.8rem;">Deje vacío para incluir todos los tipos</small>
+            </div>
+        </div>
+        
+        <div style="margin-top:20px; display:flex; justify-content:center;">
+            <button id="descargarFacturasBtn" style="height:48px; min-width:200px; font-size:1rem; font-weight:700; border-radius:6px; background:#1a355e; color:#fff; border:none; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                📥 Descargar Facturas AFIP
+            </button>
         </div>
         <script>
+        // Inicializar fechas por defecto (último mes)
+        window.addEventListener('DOMContentLoaded', function() {
+            const hoy = new Date();
+            const haceUnMes = new Date();
+            haceUnMes.setMonth(hoy.getMonth() - 1);
+            
+            document.getElementById('fechaHasta').value = hoy.toISOString().split('T')[0];
+            document.getElementById('fechaDesde').value = haceUnMes.toISOString().split('T')[0];
+        });
+        
         document.getElementById('descargarFacturasBtn').onclick = function() {
-            // Ejemplo de invocación al backend para descargar facturas emitidas por el CUIT del cliente
-            // Aquí se asume que existe un endpoint /descargar-facturas que recibe el CUIT
             const cuit = '{{ cliente.CUIT or cliente.cuit }}';
-            fetch('/descargar-facturas?cuit=' + encodeURIComponent(cuit))
-                .then(r => r.ok ? r.blob() : Promise.reject('Error al descargar'))
-                .then(blob => {
-                    // Descargar el archivo (ejemplo: ZIP o PDF)
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'facturas_' + cuit + '.zip';
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
+            const btn = this;
+            
+            // Obtener valores de los campos
+            const fechaDesde = document.getElementById('fechaDesde').value;
+            const fechaHasta = document.getElementById('fechaHasta').value;
+            const tiposIncluir = document.getElementById('tiposIncluir').value.trim();
+            
+            // Validar fechas
+            if (!fechaDesde || !fechaHasta) {
+                alert('⚠️ Por favor, complete las fechas desde y hasta');
+                return;
+            }
+            
+            if (new Date(fechaDesde) > new Date(fechaHasta)) {
+                alert('⚠️ La fecha "desde" no puede ser posterior a la fecha "hasta"');
+                return;
+            }
+            
+            // Construir URL con parámetros
+            let url = `/descargar-facturas?cuit=${encodeURIComponent(cuit)}&desde=${fechaDesde}&hasta=${fechaHasta}`;
+            
+            if (tiposIncluir) {
+                url += `&incluir_tipos=${encodeURIComponent(tiposIncluir)}`;
+            }
+            
+            // Mostrar estado de carga
+            btn.disabled = true;
+            btn.innerHTML = '🔄 Consultando AFIP...';
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    btn.disabled = false;
+                    btn.innerHTML = '📥 Descargar Facturas AFIP';
+                    
+                    if (data.success) {
+                        // Determinar el ícono según el tipo de resultado
+                        let icono = '✅';
+                        if (data.status === 'sin_facturas') {
+                            icono = 'ℹ️';
+                        } else if (data.tipo_alerta === 'warning') {
+                            icono = '⚠️';
+                        } else if (data.tipo_alerta === 'info') {
+                            icono = 'ℹ️';
+                        }
+                        
+                        let mensaje = `${icono} ${data.user_message || 'Proceso completado'}\n\n`;
+                        mensaje += `CUIT: ${cuit}\n`;
+                        
+                        // Mostrar información del período consultado
+                        if (data.fecha_desde && data.fecha_hasta) {
+                            mensaje += `Período: ${data.fecha_desde} a ${data.fecha_hasta}\n`;
+                        }
+                        
+                        // Mostrar cantidad de facturas encontradas
+                        if (data.total_encontrados !== undefined) {
+                            mensaje += `Facturas encontradas: ${data.total_encontrados}\n`;
+                        }
+                        
+                        // Mostrar archivos generados si hay facturas
+                        if (data.status === 'ok' && data.total_encontrados > 0 && data.archivos_generados) {
+                            mensaje += `\n📁 Archivos generados:\n`;
+                            mensaje += `• CSV: ${data.archivos_generados.csv}\n`;
+                            mensaje += `• JSON: ${data.archivos_generados.json}\n`;
+                            
+                            // Mostrar resumen si está disponible
+                            if (data.resumen) {
+                                mensaje += `\n📊 Resumen:\n`;
+                                mensaje += `• Cantidad: ${data.resumen.cantidad_total} comprobantes\n`;
+                                mensaje += `• Período: ${data.resumen.periodo}\n`;
+                                if (data.resumen.tipos_consultados && data.resumen.tipos_consultados !== 'Todos') {
+                                    mensaje += `• Tipos incluidos: ${data.resumen.tipos_consultados}\n`;
+                                }
+                                if (data.resumen.tipos_excluidos && data.resumen.tipos_excluidos !== 'Ninguno') {
+                                    mensaje += `• Tipos excluidos: ${data.resumen.tipos_excluidos}\n`;
+                                }
+                            }
+                        } else if (data.accion_sugerida) {
+                            mensaje += `\n${data.accion_sugerida}`;
+                        }
+                        
+                        alert(mensaje);
+                    } else {
+                        // Error - mostrar detalles del problema
+                        let mensaje = `❌ Error al descargar facturas\n\n`;
+                        mensaje += `CUIT: ${cuit}\n`;
+                        mensaje += `Error: ${data.error}\n`;
+                        if (data.detalle) {
+                            mensaje += `\nDetalles: ${data.detalle}\n`;
+                        }
+                        
+                        // Agregar instrucciones según el tipo de error
+                        if (data.error.includes('certificado') || data.error.includes('autenticación')) {
+                            mensaje += `\n📋 PASOS PARA SOLUCIONAR:\n`;
+                            mensaje += `1. Ir a www.afip.gob.ar → Mi AFIP\n`;
+                            mensaje += `2. Verificar certificados en 'Administrador de Relaciones'\n`;
+                            mensaje += `3. Activar servicios web WSAA y WSFE\n`;
+                            mensaje += `4. Confirmar delegaciones para CUIT ${cuit}`;
+                        }
+                        
+                        alert(mensaje);
+                    }
                 })
-                .catch(err => alert(err));
+                .catch(error => {
+                    btn.disabled = false;
+                    btn.innerHTML = '📥 Descargar Facturas AFIP';
+                    
+                    alert(`❌ Error de conexión\n\n` +
+                          `No se pudo conectar con el servidor.\n` +
+                          `Verifique su conexión a internet y vuelva a intentar.\n\n` +
+                          `Error técnico: ${error.message || error}`);
+                });
         };
         </script>
     </div>

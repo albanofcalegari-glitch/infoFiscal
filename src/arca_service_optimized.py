@@ -176,20 +176,14 @@ class ARCAServiceSimple:
     def _crear_tra(self):
         """Crear TRA (Ticket de Requerimiento de Acceso)"""
         dt = get_module('datetime')
+        now = dt['datetime'].utcnow()
+        generation = now - dt['timedelta'](seconds=60)
+        expiry = now + dt['timedelta'](minutes=30)
         
-        # Usar hora local de Argentina (UTC-3) para evitar problemas de timezone
-        import time
-        now = dt['datetime'].now()  # Hora local en lugar de UTC
-        
-        # AFIP requiere generationTime en el pasado reciente (no futuro)
-        generation = now - dt['timedelta'](minutes=5)  # 5 minutos en el pasado
-        expiry = now + dt['timedelta'](hours=12)       # 12 horas en el futuro
-        
-        # Formato requerido por AFIP (sin 'Z' al final)
         return f'''<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
     <header>
-        <uniqueId>{int(time.time())}</uniqueId>
+        <uniqueId>{int(now.timestamp())}</uniqueId>
         <generationTime>{generation.strftime('%Y-%m-%dT%H:%M:%S')}</generationTime>
         <expirationTime>{expiry.strftime('%Y-%m-%dT%H:%M:%S')}</expirationTime>
     </header>
@@ -209,13 +203,9 @@ class ARCAServiceSimple:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.cms') as f:
                 cms_path = f.name
             
-            # Comando OpenSSL optimizado con ruta completa
-            openssl_path = r'C:\Program Files\Git\usr\bin\openssl.exe'
-            if not os.path.exists(openssl_path):
-                openssl_path = 'openssl'  # Fallback al PATH
-            
+            # Comando OpenSSL optimizado
             cmd = [
-                openssl_path, 'smime', '-sign', '-signer', self.cert_path,
+                'openssl', 'smime', '-sign', '-signer', self.cert_path,
                 '-inkey', self.key_path, '-outform', 'DER', '-nodetach'
             ]
             
@@ -383,35 +373,17 @@ class ARCAServiceSimple:
             cuit_dir = Path(base_dir) / cuit_objetivo
             cuit_dir.mkdir(parents=True, exist_ok=True)
             
-            # Por simplicidad, asumir que hay puntos de venta y determinar facturas existentes
-            # En una implementación completa aquí se consultarían los servicios AFIP reales
-            ptos_venta = [1]  # Punto de venta por defecto
+            # Simular enumeración básica para optimización
+            # En implementación completa aquí irían las consultas reales a AFIP
             
-            # Simular consulta de facturas existentes
-            # Aquí se podría hacer una consulta real a AFIP para verificar si tiene facturas
-            # Por ahora, simulamos diferentes escenarios basados en el CUIT
-            
-            # Para el CUIT de prueba 20321518045, simular que no tiene facturas
-            if cuit_objetivo == '20321518045':
-                return {
-                    'status': 'sin_facturas',
-                    'mensaje': 'El cliente no posee facturas electrónicas',
-                    'total_guardados': 0,
-                    'ptos_vta': ptos_venta,
-                    'tipos_cbte': [1, 6, 11],
-                    'comprobantes_nuevos': [],
-                    'total_comprobantes_existentes': 0
-                }
-            
-            # Si llega aquí es porque tiene facturas, simular descarga
+            # Por ahora retornamos ejemplo exitoso
             return {
                 'status': 'ok',
                 'mensaje': 'Enumeración completada',
-                'total_guardados': 0,  # Por ahora 0, en implementación real sería la cantidad descargada
-                'ptos_vta': ptos_venta,
+                'total_guardados': 0,
+                'ptos_vta': [1],
                 'tipos_cbte': [1, 6, 11],
-                'comprobantes_nuevos': [],
-                'total_comprobantes_existentes': 5  # Simular que tiene algunas facturas
+                'comprobantes_nuevos': []
             }
             
         except Exception as e:

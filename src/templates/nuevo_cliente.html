@@ -4,6 +4,39 @@
     <meta charset="UTF-8">
     <title>Nuevo Cliente</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+    <style>
+        /* Estilos para validación de campos */
+        .campo-valido {
+            border-color: #22c55e !important;
+            box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.2);
+        }
+        
+        .campo-error {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.2);
+        }
+        
+        .campo-advertencia {
+            border-color: #f59e0b !important;
+            box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+        }
+        
+        /* Tooltip para errores */
+        input[title]:hover {
+            position: relative;
+        }
+        
+        /* Animaciones suaves */
+        input, select {
+            transition: all 0.2s ease-in-out;
+        }
+        
+        /* Indicadores visuales */
+        input:focus, select:focus {
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+            outline: none;
+        }
+    </style>
 </head>
 <body>
     <div class="header" style="position:relative;">
@@ -12,11 +45,23 @@
     <div class="main-container">
         <h2>Alta de nuevo cliente</h2>
         {% if mensaje %}
-            <div style="color:green; font-weight:500; margin-bottom:12px;">{{ mensaje }}</div>
+            <div style="color:#22c55e; background:#f0fdf4; border:1px solid #bbf7d0; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:500;">
+                ✅ {{ mensaje }}
+            </div>
+        {% endif %}
+        {% if error %}
+            <div style="color:#dc2626; background:#fef2f2; border:1px solid #fecaca; padding:12px; border-radius:8px; margin-bottom:16px; font-weight:500; white-space:pre-line;">
+                ❌ {{ error }}
+            </div>
         {% endif %}
         <form method="post">
             <label for="tipoDocumento">Tipo de Documento</label>
-            <input type="text" id="tipoDocumento" name="tipoDocumento" required>
+            <select id="tipoDocumento" name="tipoDocumento" required style="width:100%; padding:8px; margin-top:5px; border:1px solid #bfc9d1; border-radius:5px; font-size:0.97rem; background:#f9fafb; transition:border 0.2s; box-sizing:border-box; cursor:pointer;">
+                <option value="">Seleccionar tipo de documento</option>
+                <option value="DNI">DNI - Documento Nacional de Identidad</option>
+                <option value="LE">LE - Libreta de Enrolamiento</option>
+                <option value="LC">LC - Libreta Cívica</option>
+            </select>
             <label for="nroDocumento">Nro. de Documento</label>
             <input type="text" id="nroDocumento" name="nroDocumento" required>
             <label for="CUIT">CUIT</label>
@@ -28,13 +73,243 @@
             <label for="fechaNacimiento">Fecha de Nacimiento</label>
             <input type="date" id="fechaNacimiento" name="fechaNacimiento" style="width:100%; padding:8px; margin-top:5px; border:1px solid #bfc9d1; border-radius:5px; font-size:0.97rem; background:#f9fafb; transition:border 0.2s; box-sizing:border-box;">
             <label for="condicionIVA">Condición IVA</label>
-            <input type="text" id="condicionIVA" name="condicionIVA">
+            <select id="condicionIVA" name="condicionIVA" style="width:100%; padding:8px; margin-top:5px; border:1px solid #bfc9d1; border-radius:5px; font-size:0.97rem; background:#f9fafb; transition:border 0.2s; box-sizing:border-box; cursor:pointer;">
+                <option value="">Seleccionar condición IVA</option>
+                <option value="Responsable Inscripto">Responsable Inscripto</option>
+                <option value="Monotributo">Monotributo</option>
+                <option value="Exento">Exento</option>
+                <option value="No Responsable">No Responsable</option>
+                <option value="Consumidor Final">Consumidor Final</option>
+            </select>
             <label for="categoriaMonotriibuto">Categoría Monotributo</label>
-            <input type="text" id="categoriaMonotriibuto" name="categoriaMonotriibuto">
+            <select id="categoriaMonotriibuto" name="categoriaMonotriibuto" style="width:100%; padding:8px; margin-top:5px; border:1px solid #bfc9d1; border-radius:5px; font-size:0.97rem; background:#f9fafb; transition:border 0.2s; box-sizing:border-box; cursor:pointer;">
+                <option value="">No aplica / Seleccionar categoría</option>
+                <option value="A">Categoría A</option>
+                <option value="B">Categoría B</option>
+                <option value="C">Categoría C</option>
+                <option value="D">Categoría D</option>
+                <option value="E">Categoría E</option>
+                <option value="F">Categoría F</option>
+                <option value="G">Categoría G</option>
+                <option value="H">Categoría H</option>
+                <option value="I">Categoría I</option>
+                <option value="J">Categoría J</option>
+                <option value="K">Categoría K</option>
+            </select>
             <div style="margin-top:18px; display:flex; justify-content:center;">
                 <button type="submit" style="height:44px; font-size:1rem; font-weight:700; border-radius:5px; min-width:160px; padding:0 32px;">Confirmar</button>
             </div>
         </form>
     </div>
+    
+    <script>
+        // Habilitar/deshabilitar categoría monotributo según condición IVA
+        document.getElementById('condicionIVA').addEventListener('change', function() {
+            const categoriaMonotributo = document.getElementById('categoriaMonotriibuto');
+            
+            if (this.value === 'Monotributo') {
+                categoriaMonotributo.disabled = false;
+                categoriaMonotributo.style.backgroundColor = '#f9fafb';
+                categoriaMonotributo.required = true;
+            } else {
+                categoriaMonotributo.disabled = true;
+                categoriaMonotributo.style.backgroundColor = '#e5e7eb';
+                categoriaMonotributo.value = '';
+                categoriaMonotributo.required = false;
+            }
+        });
+        
+        // Inicializar estado al cargar la página
+        document.getElementById('categoriaMonotriibuto').disabled = true;
+        document.getElementById('categoriaMonotriibuto').style.backgroundColor = '#e5e7eb';
+        
+        // Validación de Número de Documento
+        document.getElementById('nroDocumento').addEventListener('input', function() {
+            let valor = this.value.replace(/[^0-9]/g, ''); // Solo números
+            
+            // Aplicar límites según tipo de documento
+            const tipoDoc = document.getElementById('tipoDocumento').value;
+            let maxLength = 8; // DNI por defecto
+            
+            if (tipoDoc === 'LE' || tipoDoc === 'LC') {
+                maxLength = 8; // LE y LC también 8 dígitos
+            }
+            
+            if (valor.length > maxLength) {
+                valor = valor.substring(0, maxLength);
+            }
+            
+            this.value = valor;
+            
+            // Validar rango
+            this.style.borderColor = '#bfc9d1';
+            if (valor.length > 0) {
+                const num = parseInt(valor);
+                if (num < 1000000 || num > 99999999) {
+                    this.style.borderColor = '#ef4444';
+                    this.title = 'Número de documento debe estar entre 1.000.000 y 99.999.999';
+                } else {
+                    this.style.borderColor = '#22c55e';
+                    this.title = 'Número de documento válido';
+                }
+            }
+        });
+        
+        // Validación de CUIT
+        document.getElementById('CUIT').addEventListener('input', function() {
+            let cuit = this.value.replace(/[^0-9]/g, ''); // Solo números
+            
+            // Limitar a 11 dígitos
+            if (cuit.length > 11) {
+                cuit = cuit.substring(0, 11);
+            }
+            
+            // Formatear CUIT: XX-XXXXXXXX-X
+            let formateado = cuit;
+            if (cuit.length > 2) {
+                formateado = cuit.substring(0, 2) + '-' + cuit.substring(2);
+            }
+            if (cuit.length > 10) {
+                formateado = cuit.substring(0, 2) + '-' + cuit.substring(2, 10) + '-' + cuit.substring(10);
+            }
+            
+            this.value = formateado;
+            
+            // Validar longitud
+            this.style.borderColor = '#bfc9d1';
+            if (cuit.length > 0) {
+                if (cuit.length === 11) {
+                    // Validación básica de CUIT
+                    if (this.validarCUIT(cuit)) {
+                        this.style.borderColor = '#22c55e';
+                        this.title = 'CUIT válido';
+                    } else {
+                        this.style.borderColor = '#f59e0b';
+                        this.title = 'CUIT con formato correcto, verificar dígito verificador';
+                    }
+                } else {
+                    this.style.borderColor = '#ef4444';
+                    this.title = 'CUIT debe tener exactamente 11 dígitos';
+                }
+            }
+        });
+        
+        // Función para validar CUIT (algoritmo básico)
+        document.getElementById('CUIT').validarCUIT = function(cuit) {
+            const multiplicadores = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+            let suma = 0;
+            
+            for (let i = 0; i < 10; i++) {
+                suma += parseInt(cuit[i]) * multiplicadores[i];
+            }
+            
+            let resto = suma % 11;
+            let dv = 11 - resto;
+            
+            if (dv === 11) dv = 0;
+            if (dv === 10) dv = 9;
+            
+            return dv === parseInt(cuit[10]);
+        };
+        
+        // Validación de Apellido
+        document.getElementById('apellido').addEventListener('input', function() {
+            let valor = this.value;
+            
+            // Permitir solo letras, espacios, acentos, ñ, apostrofes y guiones
+            valor = valor.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]/g, '');
+            
+            // Capitalizar primera letra de cada palabra
+            valor = valor.replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+            
+            this.value = valor;
+            
+            // Validar que no esté vacío
+            this.style.borderColor = '#bfc9d1';
+            if (valor.trim().length === 0) {
+                this.style.borderColor = '#ef4444';
+                this.title = 'El apellido es obligatorio';
+            } else if (valor.trim().length < 2) {
+                this.style.borderColor = '#f59e0b';
+                this.title = 'El apellido debe tener al menos 2 caracteres';
+            } else {
+                this.style.borderColor = '#22c55e';
+                this.title = 'Apellido válido';
+            }
+        });
+        
+        // Validación de Nombres
+        document.getElementById('nombres').addEventListener('input', function() {
+            let valor = this.value;
+            
+            // Permitir solo letras, espacios, acentos, ñ, apostrofes y guiones
+            valor = valor.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]/g, '');
+            
+            // Capitalizar primera letra de cada palabra
+            valor = valor.replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+            
+            this.value = valor;
+            
+            // Validar que no esté vacío
+            this.style.borderColor = '#bfc9d1';
+            if (valor.trim().length === 0) {
+                this.style.borderColor = '#ef4444';
+                this.title = 'Los nombres son obligatorios';
+            } else if (valor.trim().length < 2) {
+                this.style.borderColor = '#f59e0b';
+                this.title = 'Los nombres deben tener al menos 2 caracteres';
+            } else {
+                this.style.borderColor = '#22c55e';
+                this.title = 'Nombres válidos';
+            }
+        });
+        
+        // Validación antes del envío del formulario
+        document.querySelector('form').addEventListener('submit', function(e) {
+            let errores = [];
+            
+            // Validar Tipo de Documento
+            const tipoDoc = document.getElementById('tipoDocumento').value;
+            if (!tipoDoc) {
+                errores.push('Debe seleccionar un tipo de documento');
+            }
+            
+            // Validar Número de Documento
+            const nroDoc = document.getElementById('nroDocumento').value;
+            if (!nroDoc || nroDoc.length < 7) {
+                errores.push('Número de documento inválido (mínimo 7 dígitos)');
+            }
+            
+            // Validar CUIT (opcional pero si se ingresa debe ser válido)
+            const cuit = document.getElementById('CUIT').value.replace(/[^0-9]/g, '');
+            if (cuit && cuit.length !== 11) {
+                errores.push('CUIT debe tener exactamente 11 dígitos');
+            }
+            
+            // Validar Apellido
+            const apellido = document.getElementById('apellido').value.trim();
+            if (!apellido || apellido.length < 2) {
+                errores.push('El apellido es obligatorio y debe tener al menos 2 caracteres');
+            }
+            
+            // Validar Nombres
+            const nombres = document.getElementById('nombres').value.trim();
+            if (!nombres || nombres.length < 2) {
+                errores.push('Los nombres son obligatorios y deben tener al menos 2 caracteres');
+            }
+            
+            // Si hay errores, mostrarlos y evitar envío
+            if (errores.length > 0) {
+                e.preventDefault();
+                alert('Por favor corrija los siguientes errores:\n\n• ' + errores.join('\n• '));
+                return false;
+            }
+        });
+        
+        // Aplicar estilos de validación al tipo de documento
+        document.getElementById('tipoDocumento').addEventListener('change', function() {
+            this.style.borderColor = this.value ? '#22c55e' : '#ef4444';
+        });
+    </script>
 </body>
 </html>

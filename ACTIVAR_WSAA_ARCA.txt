@@ -1,0 +1,141 @@
+🏛️ GUÍA ESPECÍFICA: ACTIVAR WSAA EN ARCA
+=========================================
+
+📅 Fecha: 27/09/2025
+🎯 OBJETIVO: Activar servicio WSAA (Web Services Authentication and Authorization)
+📋 CUIT: 20321518045
+🎫 Ticket AFIP: 44606069
+
+🚨 PROBLEMA DETECTADO:
+=====================
+Error: "La autorización 2032151845-2032151845-web://wsass-2032151845 ya existe"
+→ Indica que YA TIENES una configuración previa en AFIP
+
+🔐 PASO 1: ACCEDER A ARCA
+=========================
+1. Ir a: https://serviciosweb.afip.gob.ar/ClaveFiscal/AdminRel/tx.error.aspx?mns=44606069
+2. O ir directamente a: www.afip.gob.ar → Mi AFIP
+3. Ingresar con CUIT: 20321518045
+4. Usar Clave Fiscal
+
+🏢 PASO 2: IR AL ADMINISTRADOR DE RELACIONES
+===========================================
+1. En el menú principal buscar: "Administrador de Relaciones de Clave Fiscal"
+2. Hacer clic para ingresar al sistema ARCA
+
+⚙️ PASO 3: LOCALIZAR SERVICIOS WEB
+==================================
+1. En el menú de ARCA, buscar:
+   - "Servicios Interactivos" O
+   - "Servicios Web" O  
+   - "Administración de Servicios Web"
+
+2. Si no aparece directamente, buscar en:
+   - "Trámites y Servicios"
+   - "Configuración"
+   - "Administración"
+
+🔍 PASO 4: VERIFICAR WSAA EXISTENTE
+==================================
+1. Una vez en Servicios Web, buscar "WSAA" en la lista
+2. Verificar el estado actual:
+
+   ✅ SI APARECE "ACTIVO":
+      → ¡Ya está configurado! El problema puede ser otro
+      → Anotar fecha de vencimiento
+      → Pasar al PASO 7
+
+   ⚠️ SI APARECE "INACTIVO" o "VENCIDO":
+      → Hacer clic en "Activar" o "Renovar"
+      → Seguir PASO 5
+
+   ❌ SI NO APARECE:
+      → Hacer clic en "Agregar Servicio" o "Nuevo"
+      → Buscar WSAA en la lista
+      → Seguir PASO 5
+
+🚀 PASO 5: ACTIVAR/CONFIGURAR WSAA
+=================================
+1. Hacer clic en WSAA (Web Services Authentication and Authorization)
+
+2. Configuración típica:
+   - Ambiente: PRODUCCIÓN (o TESTING para probar)
+   - Certificado: Seleccionar tu certificado digital
+   - CUIT Titular: 20321518045
+   - Vigencia: Máxima disponible (generalmente 1 año)
+
+3. Hacer clic en "Activar" o "Confirmar"
+
+⚠️ PASO 6: SI SALE ERROR "YA EXISTE"
+===================================
+1. NO hacer clic en "Crear Nuevo"
+2. Buscar la autorización existente:
+   - Ir a "Consultar Autorizaciones"
+   - Buscar WSAA asociado a tu CUIT
+   
+3. Si la encontrás:
+   - Verificar estado (Activa/Vencida)
+   - Si está vencida: hacer clic "Renovar"
+   - Si está activa: el problema puede ser el certificado
+
+4. Si no la encontrás:
+   - Llamar a AFIP: 0800-222-1234
+   - Mencionar ticket: 44606069
+
+✅ PASO 7: VERIFICAR ACTIVACIÓN
+==============================
+Después de activar, verificar:
+
+□ WSAA aparece como "ACTIVO" ✅
+□ Fecha de vencimiento es futura ✅  
+□ Certificado asociado correcto ✅
+□ CUIT correcto: 20321518045 ✅
+
+🧪 PASO 8: TAMBIÉN ACTIVAR WSFE
+===============================
+Para que funcione la descarga de facturas necesitás AMBOS:
+
+1. WSAA ✅ (autenticación) 
+2. WSFE ✅ (facturación electrónica)
+
+Repetir los pasos para activar WSFE también.
+
+📞 PASO 9: CONTACTAR AFIP SI PERSISTE ERROR
+==========================================
+Si sigue saliendo "La autorización ya existe":
+
+📞 Llamar: 0800-222-1234
+🎫 Ticket: 44606069  
+📋 CUIT: 20321518045
+📝 Decir: "Necesito activar WSAA pero sale error que ya existe"
+
+Horarios: Lunes a Viernes 8:00 - 20:00
+
+🎯 ALTERNATIVA: USAR AMBIENTE DE TESTING
+=======================================
+Si tenés problemas con PRODUCCIÓN:
+
+1. Activar primero WSAA en ambiente "TESTING" o "HOMOLOGACIÓN"
+2. Probar que funcione la aplicación infoFiscal
+3. Una vez que funcione en testing, activar en PRODUCCIÓN
+
+⏰ TIEMPO DE PROPAGACIÓN
+=======================
+Una vez activado WSAA:
+- Esperar 10-30 minutos
+- Los cambios en AFIP no son instantáneos
+- Después probar la aplicación infoFiscal
+
+🔧 PROBAR LA APLICACIÓN
+======================
+Una vez activado WSAA:
+1. Volver a ejecutar infoFiscal
+2. Presionar "Descargar Facturas"
+3. El error "CMS no válido" debería desaparecer
+
+💡 NOTAS IMPORTANTES:
+===================
+- WSAA es el servicio de AUTENTICACIÓN para otros servicios web
+- Sin WSAA activo, ningún otro servicio web de AFIP funciona
+- Es normal que ya exista una configuración previa
+- NO crear duplicados, sino renovar/actualizar los existentes

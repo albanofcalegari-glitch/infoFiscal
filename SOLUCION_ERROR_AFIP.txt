@@ -1,0 +1,59 @@
+📋 SOLUCIONAR PROBLEMA DE AUTENTICACIÓN AFIP
+=====================================================
+
+🚨 ERROR DETECTADO: "El CMS no es válido"
+
+Este error significa que el certificado digital no puede autenticarse correctamente con AFIP.
+
+🛠️ PASOS PARA SOLUCIONARLO:
+=====================================
+
+1️⃣ VERIFICAR CERTIFICADOS
+   - Ubicación: C:\Users\DELL\Desktop\proyectos python\infofiscal\certs\
+   - Archivos: certificado.crt y clave_privada.key
+   - Estado: ✅ PRESENTES
+
+2️⃣ VERIFICAR EN AFIP (www.afip.gob.ar)
+   📍 Ir a: Mi AFIP > Administrador de Relaciones de Clave Fiscal
+   
+   ✅ Verificar que el certificado esté:
+   - Asociado a tu CUIT (20321518045)
+   - Estado: ACTIVO
+   - Servicios habilitados: WSAA, WSFE
+
+3️⃣ ACTIVAR SERVICIOS WEB
+   📍 En AFIP, ir a: Servicios Web > Administración
+   
+   ✅ Activar estos servicios:
+   - WSAA (Web Services Authentication and Authorization)
+   - WSFE (Web Services Facturación Electrónica)
+   
+4️⃣ VERIFICAR DELEGACIONES
+   📍 En AFIP, ir a: Administrador de Relaciones
+   
+   ✅ Confirmar que tienes autorización para:
+   - Consultar facturas del CUIT 23333730219
+   - Servicios de facturación electrónica
+
+5️⃣ RENOVAR CERTIFICADO (SI ES NECESARIO)
+   Si el certificado está vencido:
+   - Generar nuevo CSR
+   - Descargar nuevo certificado de AFIP
+   - Reemplazar archivos en carpeta certs/
+
+📞 CONTACTOS ÚTILES:
+==================
+- Mesa de Ayuda AFIP: 0800-222-1234
+- Soporte Técnico Servicios Web: consultar en www.afip.gob.ar
+
+🎯 ESTADO ACTUAL:
+===============
+- Aplicación: ✅ FUNCIONANDO (modo demo)
+- Certificados: ✅ PRESENTES
+- AFIP: ❌ ERROR DE AUTENTICACIÓN
+- Solución: ACTIVAR SERVICIOS EN AFIP
+
+💡 MIENTRAS TANTO:
+================
+La aplicación funciona en MODO DEMO con facturas de ejemplo.
+Todas las funcionalidades están disponibles excepto la descarga real de AFIP.

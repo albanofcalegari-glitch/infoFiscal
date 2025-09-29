@@ -13,7 +13,11 @@ def verificar_servicios():
     """Ejecuta verificar_servicios.py y analiza el resultado"""
     try:
         # Ejecutar el script de verificación
-        result = subprocess.run([
+        result = subprocess.run([        # Decodificar el b64 que generamos (tu archivo ya está en b64)
+        [IO.File]::WriteAllBytes(\"debug_wsaa\\TRA.cms.der\", [Convert]::FromBase64String((Get-Content .\\debug_wsaa\\TRA.cms.b64 -Raw)))
+        
+        # Mostrar primeros bytes en hex
+        Format-Hex -Path .\\debug_wsaa\\TRA.cms.der | Select-Object -First 8
             sys.executable, "verificar_servicios.py"
         ], capture_output=True, text=True, encoding='utf-8')
         

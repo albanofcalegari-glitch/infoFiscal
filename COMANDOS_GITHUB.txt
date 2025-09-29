@@ -1,0 +1,39 @@
+## 🚀 COMANDOS PARA CONECTAR CON GITHUB
+
+Una vez que crees el repositorio en GitHub, ejecuta estos comandos en orden:
+
+```bash
+# 1. Conectar con el repositorio remoto (reemplaza TU-USUARIO)
+git remote add origin https://github.com/TU-USUARIO/infofiscal.git
+
+# 2. Cambiar a la rama main (estándar actual)
+git branch -M main
+
+# 3. Subir todo el código
+git push -u origin main
+```
+
+### 🔗 EJEMPLO COMPLETO:
+Si tu usuario de GitHub es "juanperez":
+
+```bash
+git remote add origin https://github.com/juanperez/infofiscal.git
+git branch -M main
+git push -u origin main
+```
+
+### 🎯 RESULTADO:
+Tu proyecto estará disponible en:
+https://github.com/TU-USUARIO/infofiscal
+
+### 🔐 AUTENTICACIÓN:
+GitHub te pedirá credenciales:
+- Usuario: tu_usuario_github
+- Password: tu_token_personal (no tu contraseña normal)
+
+Si no tienes token, ve a:
+GitHub → Settings → Developer settings → Personal access tokens → Generate new token
+
+---
+
+⚡ ¡En 5 minutos tendrás tu proyecto público en GitHub! ⚡

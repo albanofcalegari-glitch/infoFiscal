@@ -1,0 +1,82 @@
+📊 DIAGRAMA: PROCESO DE ACTIVACIÓN WSAA EN ARCA
+==============================================
+
+🔐 ENTRADA
+    ↓
+[Mi AFIP] → CUIT: 20321518045
+    ↓
+[Administrador de Relaciones]
+    ↓
+[Servicios Web / Servicios Interactivos]
+    ↓
+    
+🔍 VERIFICACIÓN
+    ↓
+¿Aparece WSAA en la lista?
+    ↓
+┌─────────────────┬─────────────────┬─────────────────┐
+│   ✅ ACTIVO     │  ⚠️ INACTIVO    │  ❌ NO APARECE  │
+│                 │                 │                 │
+│ → Ya funciona   │ → Activar       │ → Agregar       │
+│ → Verificar     │ → Renovar       │ → Crear nuevo   │
+│   otros errores │                 │                 │
+└─────────────────┴─────────────────┴─────────────────┘
+    ↓                   ↓                   ↓
+    
+🚀 CONFIGURACIÓN
+    ↓
+┌─────────────────────────────────┐
+│ Datos a configurar:             │
+│ ✅ Ambiente: PRODUCCIÓN         │
+│ ✅ Certificado: Tu .crt         │  
+│ ✅ CUIT: 20321518045           │
+│ ✅ Vigencia: Máxima            │
+└─────────────────────────────────┘
+    ↓
+    
+❓ ¿Sale error "Ya existe"?
+    ↓
+┌─────────────────┬─────────────────┐
+│   🚫 SÍ ERROR   │   ✅ NO ERROR   │
+│                 │                 │
+│ → Buscar        │ → Continuar     │
+│   existente     │   configuración │
+│ → Renovar       │                 │
+│ → Llamar AFIP   │                 │
+└─────────────────┴─────────────────┘
+    ↓                   ↓
+    
+✅ RESULTADO FINAL
+    ↓
+┌─────────────────────────────────┐
+│ Estado final requerido:         │
+│ ✅ WSAA: ACTIVO                 │
+│ ✅ WSFE: ACTIVO (también)       │  
+│ ✅ Certificado: ASOCIADO        │
+│ ✅ Delegación: CONFIGURADA      │
+└─────────────────────────────────┘
+    ↓
+    
+🧪 PRUEBA
+    ↓
+[Aplicación infoFiscal] 
+    ↓
+[Botón "Descargar Facturas"]
+    ↓
+    
+🎯 RESULTADO ESPERADO:
+━━━━━━━━━━━━━━━━━━━━━━
+✅ Conectividad: OK
+✅ Autenticación: OK  
+✅ Descarga: OK
+
+En lugar de:
+❌ Error CMS no válido
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+📞 AYUDA:
+═════════
+🎫 Ticket: 44606069
+📞 AFIP: 0800-222-1234
+📧 Email: mayuda@afip.gov.ar

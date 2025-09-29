@@ -1,0 +1,123 @@
+🏛️ GUÍA PASO A PASO - CONFIGURAR AFIP PARA SERVICIOS WEB
+=========================================================
+
+📅 Fecha: 27/09/2025
+🎯 Objetivo: Solucionar error "CMS no válido" 
+📋 CUIT: 20321518045 (tu CUIT)
+📋 CUIT delegado: 23333730219
+
+🔐 PASO 1: INGRESAR A AFIP
+==========================
+1. Ir a: https://www.afip.gob.ar
+2. Hacer clic en "Mi AFIP"
+3. Ingresar con tu CUIT: 20321518045
+4. Usar Clave Fiscal
+
+🏢 PASO 2: ADMINISTRADOR DE RELACIONES DE CLAVE FISCAL
+====================================================
+1. En el menú principal, buscar: "Administrador de Relaciones de Clave Fiscal"
+2. Hacer clic para ingresar
+
+📜 PASO 3: VERIFICAR CERTIFICADO DIGITAL
+=======================================
+1. Buscar sección "Certificados"
+2. Verificar que aparezca tu certificado
+3. Estado debe ser: "ACTIVO" ✅
+4. Si no está o está inactivo:
+   - Hacer clic en "Administrar Certificados"
+   - Subir el archivo: certificado.crt
+   - Asociar a tu CUIT: 20321518045
+
+⚙️ PASO 4: ACTIVAR SERVICIOS WEB
+===============================
+1. En Administrador de Relaciones, buscar "Servicios Web"
+2. Hacer clic en "Administración de Servicios Web"
+3. Activar estos servicios:
+   
+   🔹 WSAA (Web Services Authentication and Authorization)
+      - Descripción: Autenticación para servicios web
+      - Estado requerido: ACTIVO ✅
+   
+   🔹 WSFE (Web Services Facturación Electrónica)  
+      - Descripción: Consulta de comprobantes electrónicos
+      - Estado requerido: ACTIVO ✅
+
+4. Si no están activos, hacer clic en cada uno y "Activar"
+
+👥 PASO 5: VERIFICAR DELEGACIONES
+================================
+1. En el menú, buscar "Delegaciones"
+2. Verificar que tengas autorización para:
+   - CUIT: 23333730219
+   - Servicios: Consulta de comprobantes
+   - Estado: ACTIVA ✅
+
+3. Si no existe la delegación:
+   - El titular del CUIT 23333730219 debe otorgar delegación
+   - Servicios necesarios: WSFE, Consulta de comprobantes
+
+🧪 PASO 6: PROBAR EN AMBIENTE DE TESTING PRIMERO
+===============================================
+1. Buscar sección "Ambiente de Testing" o "Homologación"
+2. Activar servicios web en testing:
+   - WSAA Testing
+   - WSFE Testing
+3. Esto permite probar sin afectar datos reales
+
+📋 PASO 7: VERIFICAR CONFIGURACIÓN
+==================================
+
+Después de activar todo, verificar:
+
+✅ Certificado digital: ACTIVO
+✅ WSAA: ACTIVADO  
+✅ WSFE: ACTIVADO
+✅ Delegación CUIT 23333730219: ACTIVA
+✅ Testing habilitado: SÍ
+
+🚀 PASO 8: PROBAR LA APLICACIÓN
+==============================
+1. Volver a la aplicación infoFiscal
+2. Presionar "Descargar Facturas"
+3. El error "CMS no válido" debería desaparecer
+
+⚠️ PROBLEMAS COMUNES Y SOLUCIONES:
+=================================
+
+❌ "No encuentro Servicios Web"
+   → Ir a: Perfil > Administración > Servicios Interactivos
+
+❌ "No puedo activar WSFE"  
+   → Verificar que el certificado esté asociado primero
+
+❌ "La delegación no aparece"
+   → El CUIT 23333730219 debe autorizar desde su cuenta
+
+❌ "Sigue dando error CMS"
+   → Esperar 10-15 minutos después de activar
+   → Certificado puede necesitar propagación
+
+📞 CONTACTOS ÚTILES:
+==================
+- Mesa de Ayuda AFIP: 0800-222-1234
+- Soporte Servicios Web: Dentro de Mi AFIP > Ayuda
+- Horarios: Lunes a Viernes 8:00 - 20:00
+
+💡 NOTAS IMPORTANTES:
+===================
+- Los cambios en AFIP pueden tardar hasta 30 minutos en ser efectivos
+- Siempre probar primero en ambiente de testing
+- Guardar capturas de pantalla de la configuración
+- El certificado debe coincidir exactamente con el archivo certificado.crt
+
+🎯 RESULTADO ESPERADO:
+====================
+Después de estos pasos, al presionar "Descargar Facturas" en infoFiscal 
+deberías ver:
+
+✅ "Conectividad con AFIP OK"
+✅ "Autenticación WSAA exitosa" 
+✅ "X facturas descargadas exitosamente"
+
+En lugar de:
+❌ "Error en WSAA: 500 - El CMS no es válido"

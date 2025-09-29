@@ -1,0 +1,58 @@
+☑️ CHECKLIST RÁPIDO - CONFIGURACIÓN AFIP
+==========================================
+
+📋 ANTES DE EMPEZAR:
+====================
+□ Tengo mi Clave Fiscal lista
+□ Tengo acceso a Mi AFIP
+□ Conozco mi CUIT: 20321518045
+
+🔐 EN MI AFIP:
+==============
+□ 1. Ingresé a www.afip.gob.ar → Mi AFIP
+□ 2. Fui a "Administrador de Relaciones de Clave Fiscal"
+
+📜 CERTIFICADOS:
+===============
+□ 3. Mi certificado aparece en la lista
+□ 4. Estado del certificado: ACTIVO ✅
+□ 5. Certificado asociado al CUIT: 20321518045 ✅
+
+⚙️ SERVICIOS WEB:
+================
+□ 6. Fui a "Servicios Web" → "Administración"
+□ 7. WSAA está ACTIVADO ✅
+□ 8. WSFE está ACTIVADO ✅
+
+👥 DELEGACIONES:
+===============  
+□ 9. Verifiqué sección "Delegaciones"
+□ 10. CUIT 23333730219 me delegó permisos ✅
+□ 11. Servicios delegados incluyen "Consulta comprobantes" ✅
+
+🧪 TESTING:
+===========
+□ 12. Activé servicios en ambiente de testing
+□ 13. WSAA Testing: ACTIVADO ✅
+□ 14. WSFE Testing: ACTIVADO ✅
+
+✅ VERIFICACIÓN FINAL:
+=====================
+□ 15. Esperé 10-15 minutos después de activar
+□ 16. Probé la aplicación infoFiscal
+□ 17. El botón "Descargar Facturas" funciona sin error CMS
+
+❌ SI ALGO NO FUNCIONA:
+======================
+□ Llamé al 0800-222-1234 (AFIP)
+□ Tomé capturas de pantalla de errores
+□ Verifiqué que el archivo certificado.crt sea el correcto
+
+🎯 RESULTADO ESPERADO:
+=====================
+✅ Conectividad: OK
+✅ Autenticación: OK  
+✅ Descarga: OK
+
+En lugar de:
+❌ Error CMS no válido

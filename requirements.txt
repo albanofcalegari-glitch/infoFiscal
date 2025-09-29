@@ -1,2 +1,21 @@
-# Requisitos del proyecto
-Flask
+# Dependencias para infoFiscal
+
+# Core framework web
+Flask==3.0.0
+
+# Utilidades esenciales para web app
+requests==2.31.0
+bcrypt==4.0.1
+
+# Dependencias para afip_extract_by_date.py
+zeep==4.2.1              # Cliente SOAP/WSDL para WSFEv1
+python-dotenv==1.0.0     # Manejo de archivos .env
+python-dateutil==2.8.2   # Parsing de fechas avanzado
+
+# Opcional para mejorar experiencia de usuario
+colorama==0.4.6
+
+# Nota: xml.etree, sqlite3, pathlib, datetime, os vienen incluidos con Python
+# Nota: OpenSSL se requiere para afip_extract_by_date.py (generalmente incluido con Git)
+# Nota: Para desarrollo también se pueden instalar:
+# - watchdog (para auto-reload en desarrollo)

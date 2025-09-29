@@ -1,0 +1,10 @@
+loginTicketResponse
+header
+source
+destination
+uniqueId
+generationTime
+expirationTime
+credentials
+token
+sign
