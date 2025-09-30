@@ -8,7 +8,12 @@ import json
 import csv
 import base64
 import subprocess
-from datetime import datetime
+import tempfile
+import uuid
+import time
+import requests
+from datetime import datetime, timedelta
+from pathlib import Path
 import tempfile
 import uuid
 from datetime import datetime, timedelta
@@ -18,19 +23,24 @@ import xml.etree.ElementTree as ET
 
 
 def build_simple_tra(service='wsfe'):
-    """Construir TRA simple sin dependencias externas"""
+    """Construir TRA según especificaciones exactas de AFIP"""
     now = datetime.now()
-    gen_time = now - timedelta(minutes=5)
-    exp_time = now + timedelta(hours=1)
+    gen_time = now - timedelta(minutes=10)
+    exp_time = now + timedelta(hours=12)
     
-    unique_id = str(uuid.uuid4())
+    # Usar timestamp como unique_id (más simple y confiable)
+    unique_id = int(time.time())
+    
+    # Formato ISO con zona horaria Argentina
+    gen_time_str = gen_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + '-03:00'
+    exp_time_str = exp_time.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + '-03:00'
     
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <loginTicketRequest version="1.0">
 <header>
-    <uniqueId>{unique_id}</uniqueId>
-    <generationTime>{gen_time.strftime('%Y-%m-%dT%H:%M:%S-03:00')}</generationTime>
-    <expirationTime>{exp_time.strftime('%Y-%m-%dT%H:%M:%S-03:00')}</expirationTime>
+<uniqueId>{unique_id}</uniqueId>
+<generationTime>{gen_time_str}</generationTime>
+<expirationTime>{exp_time_str}</expirationTime>
 </header>
 <service>{service}</service>
 </loginTicketRequest>"""
@@ -38,15 +48,40 @@ def build_simple_tra(service='wsfe'):
 
 def sign_tra_simple(tra_xml, cert_path, key_path):
     """Firmar TRA usando OpenSSL"""
+    
+    # Detectar OpenSSL disponible
+    openssl_paths = [
+        'openssl',  # Si está en PATH
+        'C:\\Program Files\\Git\\usr\\bin\\openssl.exe',  # Git para Windows
+        'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe',  # Instalación estándar
+        'C:\\OpenSSL-Win64\\bin\\openssl.exe'  # Instalación alternativa
+    ]
+    
+    openssl_cmd = None
+    for path in openssl_paths:
+        try:
+            result = subprocess.run([path, 'version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                openssl_cmd = path
+                break
+        except:
+            continue
+    
+    if not openssl_cmd:
+        raise Exception("OpenSSL no encontrado en el sistema")
+    
+    print(f"   🔧 Usando OpenSSL: {openssl_cmd}")
+    
     with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False) as tmp_xml:
         tmp_xml.write(tra_xml)
         tra_file = tmp_xml.name
-    
+
     cms_file = tempfile.mktemp(suffix='.cms')
-    
+
     try:
         cmd = [
-            'openssl', 'smime', '-sign',
+            openssl_cmd, 'smime', '-sign',
             '-in', tra_file,
             '-out', cms_file,
             '-outform', 'DER',
@@ -55,7 +90,9 @@ def sign_tra_simple(tra_xml, cert_path, key_path):
             '-nodetach'
         ]
         
+        print(f"   🔐 Firmando TRA con OpenSSL...")
         result = subprocess.run(cmd, capture_output=True, check=True)
+        print(f"   ✅ TRA firmado exitosamente")
         
         with open(cms_file, 'rb') as f:
             return f.read()
@@ -64,8 +101,6 @@ def sign_tra_simple(tra_xml, cert_path, key_path):
             os.unlink(tra_file)
         if os.path.exists(cms_file):
             os.unlink(cms_file)
-
-
 def wsaa_auth_simple(cert_path, key_path):
     """Autenticación WSAA simplificada"""
     # URLs según entorno
@@ -96,31 +131,69 @@ def wsaa_auth_simple(cert_path, key_path):
         'SOAPAction': ''
     }
     
-    response = requests.post(wsaa_urls[afip_env], data=soap_request, headers=headers, timeout=30)
+    print(f"   📡 Enviando request WSAA a: {wsaa_urls[afip_env]}")
+    
+    try:
+        response = requests.post(wsaa_urls[afip_env], data=soap_request, headers=headers, timeout=30)
+        print(f"   📊 Respuesta HTTP: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"   ❌ Error HTTP {response.status_code}: {response.text[:500]}")
+            
+    except Exception as e:
+        print(f"   ❌ Error de conexión: {e}")
+        raise
+        
     response.raise_for_status()
     
-    # Parsear respuesta
-    root = ET.fromstring(response.text)
-    login_return = None
-    
-    for elem in root.iter():
-        if 'loginCmsReturn' in elem.tag:
-            login_return = elem.text
-            break
-    
-    if not login_return:
-        raise Exception("No se encontró loginCmsReturn")
-    
-    # Decodificar credentials
-    login_xml = base64.b64decode(login_return).decode('utf-8')
-    login_root = ET.fromstring(login_xml)
-    
-    credentials = {}
-    for child in login_root.iter():
-        if child.tag in ['token', 'sign']:
-            credentials[child.tag] = child.text
-    
-    return credentials['token'], credentials['sign']
+    # Parsear respuesta con manejo de encoding
+    try:
+        response_text = response.text
+        print(f"   📝 Respuesta AFIP recibida (primeros 200 chars): {response_text[:200]}")
+        
+        # Guardar respuesta completa para debug
+        with open('debug_wsaa/WSAA_response.xml', 'w', encoding='utf-8') as f:
+            f.write(response_text)
+        print(f"   💾 Respuesta completa guardada en debug_wsaa/WSAA_response.xml")
+        
+        root = ET.fromstring(response_text)
+        login_return = None
+        
+        for elem in root.iter():
+            if 'loginCmsReturn' in elem.tag:
+                login_return = elem.text
+                break
+        
+        if not login_return:
+            raise Exception("No se encontró loginCmsReturn en la respuesta")
+        
+        print(f"   🔓 Decodificando credenciales...")
+        
+        # El loginCmsReturn contiene XML escapado, necesitamos desenscaparlo
+        import html
+        login_xml = html.unescape(login_return)
+        
+        # Guardar el XML desenscapado para debug
+        with open('debug_wsaa/loginCmsReturn.unescaped.xml', 'w', encoding='utf-8') as f:
+            f.write(login_xml)
+        
+        print(f"   📝 XML credentials (primeros 200 chars): {login_xml[:200]}")
+        login_root = ET.fromstring(login_xml)
+        
+        credentials = {}
+        for child in login_root.iter():
+            if child.tag in ['token', 'sign']:
+                credentials[child.tag] = child.text
+        
+        if 'token' not in credentials or 'sign' not in credentials:
+            raise Exception("No se encontraron token y sign en la respuesta")
+        
+        print(f"   ✅ Credenciales obtenidas: Token presente, Sign presente")
+        return credentials['token'], credentials['sign']
+        
+    except Exception as e:
+        print(f"   ❌ Error parseando respuesta AFIP: {e}")
+        raise
 
 
 def wsfe_request_simple(method, params, token, sign, cuit):
@@ -169,6 +242,21 @@ def wsfe_request_simple(method, params, token, sign, cuit):
             <CbteTipo>{params['CbteTipo']}</CbteTipo>
         </{method}>"""
     
+    elif method in ['FEParamGetTiposCbte', 'FEParamGetTiposDoc', 'FEParamGetTiposIva', 'FEParamGetMonedas']:
+        # Métodos de parámetros sin parámetros adicionales
+        soap_body = f"""
+        <{method} xmlns="http://ar.gov.afip.dif.FEV1/">
+            <Auth>
+                <Token>{token}</Token>
+                <Sign>{sign}</Sign>
+                <Cuit>{cuit}</Cuit>
+            </Auth>
+        </{method}>"""
+    
+    else:
+        # Método no soportado
+        raise Exception(f"Método WSFE no soportado: {method}")
+    
     soap_request = f"""<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
 <soap:Body>
@@ -181,7 +269,25 @@ def wsfe_request_simple(method, params, token, sign, cuit):
         'SOAPAction': f'"http://ar.gov.afip.dif.FEV1/{method}"'
     }
     
-    response = requests.post(wsfe_urls[afip_env], data=soap_request, headers=headers, timeout=30)
+    # Configuración SSL para AFIP
+    import ssl
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    # Crear sesión con configuración SSL relajada para AFIP
+    session = requests.Session()
+    
+    # Configurar adapter con SSL context personalizado
+    class AFIPHTTPSAdapter(requests.adapters.HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            context = ssl.create_default_context()
+            context.set_ciphers('DEFAULT:@SECLEVEL=1')  # Permite DH keys pequeñas
+            kwargs['ssl_context'] = context
+            return super().init_poolmanager(*args, **kwargs)
+    
+    session.mount('https://', AFIPHTTPSAdapter())
+    
+    response = session.post(wsfe_urls[afip_env], data=soap_request, headers=headers, timeout=30)
     
     if response.status_code != 200:
         return None
@@ -194,10 +300,21 @@ def wsfe_request_simple(method, params, token, sign, cuit):
         return None
 
 
-def extraer_facturas_simple(cuit, desde=None, hasta=None, punto_venta=None, fecha_desde=None, fecha_hasta=None, cert_path=None, key_path=None, max_por_tipo=50):
-    """Extracción simplificada de facturas con lógica FE completa"""
+def extraer_facturas_simple(cuit, desde=None, hasta=None, punto_venta=None, fecha_desde=None, fecha_hasta=None, cert_path=None, key_path=None, max_por_tipo=50, cuit_consultor=None):
+    """Extracción simplificada de facturas con lógica FE completa
+    
+    Args:
+        cuit: CUIT del cliente a consultar (facturas a extraer)
+        cuit_consultor: CUIT del consultor/contador (para autenticación). Si no se especifica, usa el mismo que 'cuit'
+    """
+    
+    # Si no se especifica consultor, usar el mismo CUIT para auth y consulta
+    if cuit_consultor is None:
+        cuit_consultor = cuit
     
     print(f"🔐 Autenticando con AFIP...")
+    print(f"   Consultor (certificado): {cuit_consultor}")
+    print(f"   Cliente a consultar: {cuit}")
     
     # Normalizar parámetros de fecha (compatibilidad con diferentes llamadas)
     if desde is None and fecha_desde is not None:
@@ -209,30 +326,50 @@ def extraer_facturas_simple(cuit, desde=None, hasta=None, punto_venta=None, fech
         print("❌ Se requieren fechas desde y hasta")
         return []
     
-    # Autenticación
+    # Autenticación (siempre con el certificado del consultor)
     try:
-        token, sign = wsaa_auth_simple('certs/certificado.crt', 'certs/clave_privada.key')
+        # Usar rutas absolutas para los certificados
+        import os
+        from pathlib import Path
+        
+        # Si estamos en src/, subir un nivel para encontrar certs/
+        if os.path.basename(os.getcwd()) == 'src':
+            base_dir = Path(os.getcwd()).parent
+        else:
+            base_dir = Path(os.getcwd())
+        
+        cert_path = base_dir / 'certs' / 'certificado.crt'
+        key_path = base_dir / 'certs' / 'clave_privada.key'
+        
+        print(f"   Usando certificado: {cert_path}")
+        print(f"   Usando clave: {key_path}")
+        
+        if not cert_path.exists():
+            raise FileNotFoundError(f"No se encontró {cert_path}")
+        if not key_path.exists():
+            raise FileNotFoundError(f"No se encontró {key_path}")
+        
+        token, sign = wsaa_auth_simple(str(cert_path), str(key_path))
         print("✅ Autenticación WSAA exitosa")
     except Exception as e:
         print(f"❌ Error autenticación: {e}")
         return []
     
-    consultor_cuit = cuit
+    consultor_cuit = cuit_consultor  # Para auth
+    cliente_cuit = cuit              # Para consultar facturas
     comprobantes = []
     
     # PASO 1: Obtener puntos de venta → FEParamGetPtosVenta
-    print(f"📋 Consultando puntos de venta...")
+    print(f"📋 Consultando puntos de venta del cliente {cliente_cuit}...")
     ptos_venta_resp = wsfe_request_simple('FEParamGetPtosVenta', {}, token, sign, consultor_cuit)
     
     ptos_venta = [1, 2, 3, 4, 5]  # Probar múltiples PV por defecto
     if ptos_venta_resp:
         try:
-            # Parsear XML response para extraer puntos de venta
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(ptos_venta_resp)
+            # ptos_venta_resp ya es un ElementTree
             pts = []
             print("📋 Respuesta FEParamGetPtosVenta recibida:")
-            for pto in root.findall('.//PtoVenta'):
+            for pto in ptos_venta_resp.findall('.//PtoVenta'):
                 id_elem = pto.find('Id')
                 bloq_elem = pto.find('Bloqueado')
                 if id_elem is not None and bloq_elem is not None:

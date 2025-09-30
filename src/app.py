@@ -4,6 +4,17 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from pathlib import Path
 import os
 
+# Cargar variables de entorno del archivo .env
+try:
+    from dotenv import load_dotenv
+    # Cargar .env desde el directorio padre (donde está el .env)
+    env_path = Path(__file__).parent.parent / '.env'
+    load_dotenv(env_path)
+    print(f"✅ Archivo .env cargado desde: {env_path}")
+    print(f"🔧 INFOFISCAL_MODE: {os.environ.get('INFOFISCAL_MODE', 'No configurado')}")
+except ImportError:
+    print("⚠️ python-dotenv no disponible")
+
 app = Flask(__name__)
 app.secret_key = 'cambia-esto-por-una-clave-segura'
 
@@ -74,8 +85,18 @@ def descargar_facturas():
     if not modo_produccion:
         return jsonify({'success': False,'error': 'Aplicación no está en modo producción','detalle': 'Configure INFOFISCAL_MODE=production'}), 400
     
-    if not (os.path.exists('certs/certificado.crt') and os.path.exists('certs/clave_privada.key')):
-        return jsonify({'success': False,'error': 'Certificados AFIP no encontrados','detalle': 'Verifique certs/certificado.crt y certs/clave_privada.key'}), 400
+    # Verificar certificados usando rutas absolutas
+    from pathlib import Path
+    if os.path.basename(os.getcwd()) == 'src':
+        base_dir = Path(os.getcwd()).parent
+    else:
+        base_dir = Path(os.getcwd())
+    
+    cert_path = base_dir / 'certs' / 'certificado.crt'
+    key_path = base_dir / 'certs' / 'clave_privada.key'
+    
+    if not (cert_path.exists() and key_path.exists()):
+        return jsonify({'success': False,'error': 'Certificados AFIP no encontrados','detalle': f'Verifique {cert_path} y {key_path}'}), 400
 
     try:
         # Parsear fechas (default: último mes)
@@ -129,9 +150,12 @@ def descargar_facturas():
         # PASO 1: Extracción directa con método simplificado
         try:
             comprobantes = extraer_facturas_simple(
-                cuit=consultor_cuit,
+                cuit=cuit,  # CUIT del cliente a consultar
+                cuit_consultor=consultor_cuit,  # CUIT del consultor para autenticación
                 desde=desde.strftime('%Y-%m-%d'),
-                hasta=hasta.strftime('%Y-%m-%d')
+                hasta=hasta.strftime('%Y-%m-%d'),
+                cert_path=str(cert_path),
+                key_path=str(key_path)
             )
         except Exception as e:
             return jsonify({
