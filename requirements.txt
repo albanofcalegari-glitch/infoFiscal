@@ -1,21 +1,28 @@
-# Dependencias para infoFiscal
+# requirements.txt — InfoFiscal sistema multi-tenant
+# Actualizado: 2026-03-30
+# Para instalar: pip install -r requirements.txt
+#
+# NOTA: Este requirements.txt reemplaza al anterior (que era solo para el prototipo Flask).
+# El baseline AFIP (descargar_todos_20308757626.py) sigue usando requests/urllib3
+# que ya están instalados globalmente — no se declaran aquí para no duplicar.
 
-# Core framework web
-Flask==3.0.0
+# ── Web framework ─────────────────────────────────────────────────────────────
+Flask==3.1.3
 
-# Utilidades esenciales para web app
-requests==2.31.0
-bcrypt==4.0.1
+# ── PostgreSQL driver (psycopg v3, no psycopg2) ───────────────────────────────
+# psycopg[binary] incluye extensión C precompilada — más rápido que pure Python.
+# Si falla en algún entorno, reemplazar por psycopg[pure] sin [binary].
+psycopg[binary]==3.3.3
+psycopg-pool==3.3.0
 
-# Dependencias para afip_extract_by_date.py
-zeep==4.2.1              # Cliente SOAP/WSDL para WSFEv1
-python-dotenv==1.0.0     # Manejo de archivos .env
-python-dateutil==2.8.2   # Parsing de fechas avanzado
+# ── Seguridad ─────────────────────────────────────────────────────────────────
+bcrypt==5.0.0              # hashing de contraseñas (cost factor configurable)
+itsdangerous==2.2.0        # tokens de sesión firmados con SECRET_KEY
 
-# Opcional para mejorar experiencia de usuario
-colorama==0.4.6
+# ── CSRF ──────────────────────────────────────────────────────────────────────
+# Flask-WTF provee CSRFProtect(app) que valida tokens en POST/PUT/DELETE.
+# El token se inyecta en templates vía {{ csrf_token() }}.
+Flask-WTF==1.2.2
 
-# Nota: xml.etree, sqlite3, pathlib, datetime, os vienen incluidos con Python
-# Nota: OpenSSL se requiere para afip_extract_by_date.py (generalmente incluido con Git)
-# Nota: Para desarrollo también se pueden instalar:
-# - watchdog (para auto-reload en desarrollo)
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1       # carga .env en desarrollo

@@ -1,256 +1,207 @@
 # InfoFiscal - Sistema de Gestión Contable con Integración AFIP
 
-Una aplicación web profesional para estudios contables con integración completa a los servicios web de AFIP/ARCA.
+Sistema completo de gestión contable para contadores con integración directa a los Web Services de AFIP.
 
-## 🎯 Características Principales
+## ✨ Características
 
-### 🔐 **Autenticación Segura**
-- Sistema de login con bcrypt
-- Gestión de sesiones seguras
-- Panel de administración
+- ✅ **Integración completa con AFIP Web Services**
+  - WSFEv1 (Factura Electrónica tradicional)
+  - WSMTXCA (Monotributo con detalle)
+  - WSFEX (Factura de Exportación)
 
-### 👥 **Gestión de Clientes**
-- Búsqueda dinámica por CUIT/Razón Social
-- Sistema de delegaciones AFIP
-- Confirmación de clientes antes de descargas
+- ✅ **Gestión de clientes**
+  - Base de datos SQLite
+  - CRUD completo de clientes
+  - Seguimiento de facturas
 
-### 📄 **Descarga de Facturas**
-- Integración real con servicios WSFE de AFIP
-- Modo simulación para testing
-- Descarga automática en formato ZIP
-- Soporte para múltiples períodos
-
-### 🏢 **Sistema de Delegaciones**
-- Manejo de autorizaciones AFIP
-- Consulta de facturas de terceros autorizados
-- Configuración automática de permisos
+- ✅ **Autenticación segura**
+  - Sistema de login con control de intentos
+  - Certificados digitales AFIP
+  - Tokens con caché inteligente
 
 ## 🚀 Instalación
 
-### Requisitos Previos
-- Python 3.8+
-- OpenSSL (para certificados AFIP)
-- Git
+### Requisitos previos
 
-### Configuración del Proyecto
-
-1. **Clonar el repositorio**
 ```bash
-git clone https://github.com/tu-usuario/infofiscal.git
+Python 3.13+
+Git for Windows (incluye OpenSSL)
+```
+
+### Instalación
+
+```bash
+# Clonar repositorio
+git clone [URL_DEL_REPO]
 cd infofiscal
-```
 
-2. **Crear entorno virtual**
-```bash
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-```
-
-3. **Instalar dependencias**
-```bash
+# Instalar dependencias
 pip install -r requirements.txt
+
+# Configurar certificados AFIP
+# Copiar certificado.crt y clave_privada.key a carpeta certs/
 ```
 
-4. **Configurar base de datos**
-```bash
-python crear_db.py
+### Configuración
+
+Crear archivo `.env` en la raíz del proyecto:
+
+```env
+# Configuración AFIP
+AFIP_CERT_PATH=certs/certificado.crt
+AFIP_KEY_PATH=certs/clave_privada.key
+AFIP_CUIT=20321518045
+AFIP_ENV=prod
+
+# Configuración Base de Datos
+DB_PATH=infofiscal.db
 ```
 
-5. **Configurar certificados AFIP**
-- Seguir las instrucciones en `INSTRUCCIONES_PRODUCCION.txt`
-- Generar certificados con `generar_certificados.py`
+## 📋 Uso
 
-## 📱 Uso de la Aplicación
+### Iniciar la aplicación
 
-### Iniciar el Sistema
 ```bash
 python src/app.py
 ```
 
-Acceder a: http://127.0.0.1:5000
+Acceder a: http://localhost:5000
+
+### Usuario por defecto
+
 - **Usuario**: admin
-- **Contraseña**: admin123
+- **Contraseña**: (configurar en primer acceso)
 
-### Verificar Servicios AFIP
-```bash
-# Verificación manual
-python verificar_servicios.py
-
-# Monitoreo automático
-.\monitor_afip.bat
-
-# Verificación rápida
-.\check.bat
-```
-
-### Cambiar Modo de Operación
-```bash
-# Activar producción (servicios reales AFIP)
-python cambiar_modo.py produccion
-
-# Activar simulación (facturas de ejemplo)
-python cambiar_modo.py simulacion
-```
-
-## 🏗️ Estructura del Proyecto
+## 📁 Estructura del Proyecto
 
 ```
 infofiscal/
-├── src/                      # Código fuente
-│   ├── app.py               # Aplicación Flask principal
-│   ├── arca_service_simple.py # Integración AFIP/ARCA
-│   └── config_cuits.py      # Configuración de CUITs
-├── templates/               # Plantillas HTML
-│   ├── login.html
-│   ├── home.html
-│   └── consultafacturacliente.html
-├── static/                  # Archivos estáticos
-│   └── estudio.css         # Estilos CSS
-├── certs/                   # Certificados AFIP
-├── facturas/               # Facturas descargadas
-├── crear_db.py             # Inicialización de BD
-├── verificar_servicios.py  # Verificación AFIP
-├── monitor_afip.bat        # Monitor automático
-└── requirements.txt        # Dependencias
+├── src/
+│   ├── app.py                  # Aplicación Flask principal
+│   ├── wsfev1_client.py        # Cliente WSFEv1
+│   ├── wsmtxca_client.py       # Cliente WSMTXCA
+│   └── wsfexv1_client.py       # Cliente WSFEX
+├── templates/
+│   └── index.html              # Frontend principal
+├── static/
+│   ├── css/
+│   └── js/
+├── certs/
+│   ├── certificado.crt         # Certificado AFIP
+│   └── clave_privada.key       # Clave privada
+├── tests_y_pruebas/            # Scripts de prueba
+├── .env                        # Configuración (no incluido en git)
+├── crear_db.py                 # Script para crear BD
+├── requirements.txt            # Dependencias Python
+└── README.md                   # Este archivo
 ```
 
-## 🔧 Configuración AFIP
+## 🔧 Utilidades
 
-### 1. Generar Certificados
-```bash
-python generar_certificados.py
-```
+### Crear base de datos
 
-### 2. Habilitar Servicios Web
-1. Ingresar a https://auth.afip.gob.ar/
-2. Ir a "Administrador de Relaciones"
-3. Habilitar "Web Service Facturación Electrónica"
-4. Asociar certificado digital
-5. Esperar activación (hasta 24 horas)
-
-### 3. Verificar Estado
-```bash
-python verificar_servicios.py
-```
-
-## 👥 Sistema de Delegaciones
-
-### Configurar Cliente Delegado
-```bash
-python agregar_cliente_delegado.py
-```
-
-### Estructura de Delegación
-- **Tu CUIT**: 20-32151804-5 (operador)
-- **Cliente CUIT**: 23-33373021-9 (autoriza acceso)
-- **Configuración**: `src/config_cuits.py`
-
-## 🔄 Estados de Operación
-
-### Modo Simulación ✅
-- Facturas de ejemplo
-- Sin conexión a AFIP
-- Ideal para desarrollo y testing
-
-### Modo Producción 🚀
-- Servicios reales de AFIP
-- Facturas legales descargables
-- Requiere servicios habilitados
-
-## 📊 Base de Datos
-
-### Tabla: usuarios
-- id, usuario, password_hash, activo
-
-### Tabla: clientes  
-- id, cuit, razon_social, activo
-
-### Inicialización
 ```bash
 python crear_db.py
 ```
 
-## 🛠️ Herramientas de Desarrollo
+### Ver clientes
 
-### Scripts Útiles
-- `verificar_servicios.py`: Estado de AFIP
-- `cambiar_modo.py`: Alternar simulación/producción
-- `monitor_afip.bat`: Verificación automática
-- `check.bat`: Verificación rápida
+```bash
+python ver_clientes.py
+```
 
-### Logs y Monitoreo
-- `monitor_log.txt`: Historial de verificaciones
-- Notificaciones sonoras cuando AFIP está activo
-- Verificación cada 5 minutos automática
+### Consultar puntos de venta AFIP
 
-## 🔒 Seguridad
+```bash
+python consultar_puntos_venta.py
+```
 
-### Autenticación
-- Contraseñas hasheadas con bcrypt
-- Sesiones Flask seguras
-- Validación de permisos por ruta
+## 📡 Servicios AFIP Integrados
 
-### AFIP Integration
-- Certificados digitales X.509
-- Firmas CMS con OpenSSL
-- Tokens de autenticación WSAA
+### WSFEv1 - Factura Electrónica
 
-## 📋 Dependencias
+Permite consultar facturas tipos A, B, C, M emitidas desde 2011.
 
-Ver `requirements.txt` para lista completa:
-- Flask (framework web)
-- bcrypt (autenticación)
-- requests (HTTP)
-- pathlib (manejo de archivos)
-- sqlite3 (base de datos)
+**Requisitos:**
+- Punto de venta configurado como "Factura Electrónica - Web Services"
+- Delegación del servicio "Facturación Electrónica" en Administrador de Relaciones
 
-## 🤝 Contribuir
+### WSMTXCA - Monotributo
 
-1. Fork el proyecto
-2. Crear rama de feature (`git checkout -b feature/AmazingFeature`)
-3. Commit cambios (`git commit -m 'Add AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abrir Pull Request
+Para monotributistas que emiten con detalle de productos.
+
+**Requisitos:**
+- Punto de venta configurado como "Factura Electrónica - Monotributo - Web Services"
+- Delegación del servicio "Factura Electrónica con Detalle - MTXCA"
+
+### WSFEX - Exportación
+
+Para facturas de exportación tipo E.
+
+## 🔐 Configuración de Delegaciones AFIP
+
+Para que un contador pueda consultar facturas de clientes:
+
+1. **Cliente** debe ingresar a AFIP con Clave Fiscal
+2. Ir a **"Administrador de Relaciones"**
+3. **"Nueva Relación"**
+4. Representante: CUIT del contador
+5. Servicios a delegar:
+   - ✅ Facturación Electrónica
+   - ✅ Factura Electrónica con Detalle - MTXCA (si corresponde)
+6. Permisos: **Consulta** y **Presentación**
+7. Guardar y esperar 15-30 minutos para sincronización
+
+## ⚠️ Notas Importantes
+
+### Limitaciones conocidas
+
+- **"Factura en Línea"** del portal AFIP NO es accesible vía Web Services
+- Solo se pueden consultar facturas emitidas vía Web Services
+- Las delegaciones pueden tardar hasta 30 minutos en sincronizar
+
+### Ambiente de producción vs homologación
+
+- **Producción**: Facturas reales, certificado de producción
+- **Homologación**: Pruebas, certificado de testing (obtener vía WSASS)
+
+## 🛠️ Solución de Problemas
+
+### Error 600: "No apareció CUIT en lista de relaciones"
+
+**Causa**: Falta delegación o no está sincronizada
+
+**Solución**:
+1. Verificar delegación en Administrador de Relaciones
+2. Esperar 30 minutos
+3. Verificar que el servicio sea "Facturación Electrónica" (no genérico)
+
+### Error: "OpenSSL no encontrado"
+
+**Causa**: OpenSSL no está instalado o no está en PATH
+
+**Solución**:
+- Instalar Git for Windows (incluye OpenSSL)
+- O instalar OpenSSL manualmente
+
+### "Último comprobante = 0" pero sé que hay facturas
+
+**Causa**: Las facturas fueron emitidas con "Factura en Línea" (portal web)
+
+**Solución**:
+- Crear punto de venta tipo "Web Services"
+- Futuras facturas usar ese punto de venta
 
 ## 📞 Soporte
 
-### AFIP
-- Teléfono: 0800-999-2347
-- Web: https://www.afip.gob.ar/
-
-### Documentación
-- `INSTRUCCIONES_PRODUCCION.txt`: Guía completa AFIP
-- `GUIA_SERVICIOS_AFIP.txt`: Pasos detallados
+Para problemas con AFIP:
+- Email: mayuda@afip.gov.ar
+- Tel: 0810-999-2347
 
 ## 📄 Licencia
 
-Este proyecto está bajo la Licencia MIT - ver `LICENSE` para detalles.
+Este proyecto es privado y de uso interno.
 
-## 🎯 Estado del Proyecto
+## 🙏 Agradecimientos
 
-### ✅ Completado
-- Sistema de autenticación
-- Gestión de clientes
-- Integración AFIP básica
-- Sistema de delegaciones
-- Interfaz web responsive
-- Generación de certificados
-- Monitoreo automático
-
-### 🚧 En Desarrollo
-- Reportes avanzados
-- Notificaciones email
-- API REST
-- Dashboard analytics
-
-### 📋 Por Hacer
-- Tests automatizados
-- Documentación API
-- Docker deployment
-- Backup automático
-
----
-
-**Desarrollado para estudios contables argentinos** 🇦🇷  
-*Integración completa con AFIP/ARCA*
+Desarrollado con asistencia de Claude (Anthropic)

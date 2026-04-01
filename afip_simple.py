@@ -51,10 +51,11 @@ def sign_tra_simple(tra_xml, cert_path, key_path):
     
     # Detectar OpenSSL disponible
     openssl_paths = [
-        'openssl',  # Si está en PATH
+        'C:\\Program Files\\Git\\mingw64\\bin\\openssl.exe',  # Git mingw64
         'C:\\Program Files\\Git\\usr\\bin\\openssl.exe',  # Git para Windows
         'C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe',  # Instalación estándar
-        'C:\\OpenSSL-Win64\\bin\\openssl.exe'  # Instalación alternativa
+        'C:\\OpenSSL-Win64\\bin\\openssl.exe',  # Instalación alternativa
+        'openssl'  # Si está en PATH
     ]
     
     openssl_cmd = None

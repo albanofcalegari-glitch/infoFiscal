@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta WSMTXCA - InfoFiscal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+    <style>
+        .wsmtxca-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        
+        .consulta-form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: end;
+        }
+        
+        .form-group {
+            flex: 1;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .btn-consultar {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            height: 40px;
+        }
+        
+        .btn-consultar:hover {
+            background: #0056b3;
+        }
+        
+        .btn-consultar:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .resultado-container {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .comprobante-info {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .comprobante-header {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .comprobante-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin: 0;
+        }
+        
+        .comprobante-subtitle {
+            color: #666;
+            margin: 5px 0 0 0;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+        
+        .info-value {
+            color: #333;
+        }
+        
+        .items-container {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+        }
+        
+        .items-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .items-table th, .items-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .items-table th {
+            background: #f1f3f4;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .codigo-mtx {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        .no-encontrado {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        
+        .error-message {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .success-message {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .tipos-comprobante-info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        
+        .tipos-comprobante-info h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .tipos-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="wsmtxca-container">
+        <h1>🔍 Consulta WSMTXCA</h1>
+        <p>Consultar todos los comprobantes con códigos MTX de un cliente</p>
+        
+        <div class="consulta-form">
+            <form id="consultaForm">
+                <div class="form-row">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="cuit">CUIT del Cliente:</label>
+                        <input type="text" id="cuit" name="cuit" placeholder="Ingrese CUIT (ej: 20123456789)" maxlength="11" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="puntoVenta">Punto de Venta (opcional):</label>
+                        <input type="number" id="puntoVenta" name="punto_venta" min="1" max="9999" placeholder="Todos los PV">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="limite">Límite por tipo:</label>
+                        <select id="limite" name="limite">
+                            <option value="10">10 últimos</option>
+                            <option value="25" selected>25 últimos</option>
+                            <option value="50">50 últimos</option>
+                            <option value="100">100 últimos</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <button type="submit" class="btn-consultar" id="btnConsultar">
+                            🔍 Buscar Todos los Comprobantes
+                        </button>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 10px; background: #e8f4f8; border-radius: 6px; font-size: 14px;">
+                    <strong>📊 Se consultarán automáticamente:</strong> Facturas A/B/C, Notas de Débito/Crédito, Monotributo, FCE MiPyMEs
+                </div>
+            </form>
+            
+
+        </div>
+        
+        <div id="resultadoContainer" class="resultado-container">
+            <!-- Aquí se mostrará el resultado -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('consultaForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const btnConsultar = document.getElementById('btnConsultar');
+            const resultadoContainer = document.getElementById('resultadoContainer');
+            
+            // Obtener datos del formulario
+            const formData = new FormData(this);
+            
+            // Validar CUIT
+            const cuit = formData.get('cuit').replace(/\D/g, '');
+            if (cuit.length !== 11) {
+                alert('El CUIT debe tener 11 dígitos');
+                return;
+            }
+            
+            const puntoVenta = formData.get('punto_venta') || '';
+            const limite = formData.get('limite') || '25';
+            
+            // Mostrar loading
+            btnConsultar.disabled = true;
+            btnConsultar.textContent = '⏳ Buscando...';
+            resultadoContainer.style.display = 'block';
+            resultadoContainer.innerHTML = '<div class="loading">🔄 Consultando todos los tipos de comprobantes en AFIP WSMTXCA...</div>';
+            
+            try {
+                // Llamar al nuevo endpoint de búsqueda masiva
+                const params = new URLSearchParams({
+                    cuit: cuit,
+                    limite: limite
+                });
+                
+                if (puntoVenta) {
+                    params.append('punto_venta', puntoVenta);
+                }
+                
+                const response = await fetch(`/buscar-wsmtxca-completo?${params.toString()}`);
+                const data = await response.json();
+                
+                mostrarResultadoCompleto(data);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultadoContainer.innerHTML = `
+                    <div class="error-message">
+                        ❌ Error de conexión: ${error.message}
+                    </div>
+                `;
+            } finally {
+                btnConsultar.disabled = false;
+                btnConsultar.textContent = '🔍 Buscar Todos los Comprobantes';
+            }
+        });
+        
+        function mostrarResultadoCompleto(data) {
+            const container = document.getElementById('resultadoContainer');
+            
+            if (!data.success) {
+                container.innerHTML = `
+                    <div class="error-message">
+                        ❌ Error: ${data.error}
+                        ${data.detalle ? `<br><small>${data.detalle}</small>` : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            const resultados = data.resultados || [];
+            const total_encontrados = resultados.filter(r => r.status === 'encontrado').length;
+            
+            let html = `
+                <div class="success-message">
+                    ✅ Búsqueda completada - ${total_encontrados} comprobantes encontrados (${data.consultas_realizadas || resultados.length} consultas realizadas)
+                </div>
+            `;
+            
+            if (total_encontrados === 0) {
+                html += `
+                    <div class="no-encontrado">
+                        📭 <strong>No se encontraron comprobantes</strong><br>
+                        No existen comprobantes WSMTXCA para el CUIT ${data.cuit}
+                    </div>
+                `;
+            } else {
+                // Agrupar por tipo de comprobante
+                const porTipo = {};
+                resultados.filter(r => r.status === 'encontrado').forEach(resultado => {
+                    const tipo = resultado.consulta.tipo;
+                    if (!porTipo[tipo]) {
+                        porTipo[tipo] = [];
+                    }
+                    porTipo[tipo].push(resultado);
+                });
+                
+                // Mostrar cada tipo
+                for (const [tipo, comprobantes] of Object.entries(porTipo)) {
+                    const nombreTipo = getNombreTipo(parseInt(tipo));
+                    html += `
+                        <div style="margin-bottom: 30px;">
+                            <h3 style="color: #1a355e; border-bottom: 2px solid #ddd; padding-bottom: 10px;">
+                                📋 ${nombreTipo} (${comprobantes.length} encontrados)
+                            </h3>
+                            <div style="display: grid; gap: 15px;">
+                    `;
+                    
+                    comprobantes.forEach(comp => {
+                        const datos = comp.datos;
+                        const items = comp.items || [];
+                        
+                        html += `
+                            <div class="comprobante-info" style="margin-bottom: 15px;">
+                                <div class="comprobante-header">
+                                    <h4 class="comprobante-title">PV ${datos.punto_venta} - Nº ${datos.numero_comprobante}</h4>
+                                    <p class="comprobante-subtitle">CAE: ${datos.cae || 'N/A'} - ${datos.fecha_emision || 'N/A'}</p>
+                                </div>
+                                
+                                <div class="info-grid">
+                                    <div class="info-item">
+                                        <span class="info-label">Total:</span>
+                                        <span class="info-value"><strong>$${datos.importe_total || '0'}</strong></span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Receptor:</span>
+                                        <span class="info-value">${datos.receptor_denominacion || 'N/A'}</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="info-label">Items:</span>
+                                        <span class="info-value">${datos.cantidad_items || items.length || 0}</span>
+                                    </div>
+                                </div>
+                                
+                                ${items.length > 0 ? `
+                                    <div style="margin-top: 10px;">
+                                        <strong>📦 Primeros items:</strong>
+                                        ${items.slice(0, 3).map(item => `
+                                            <div style="font-size: 12px; margin: 2px 0;">
+                                                <span class="codigo-mtx">${item.codigo_mtx || 'N/A'}</span> 
+                                                ${item.descripcion || 'N/A'} - $${item.importe_total || '0'}
+                                            </div>
+                                        `).join('')}
+                                        ${items.length > 3 ? `<div style="font-size: 12px; color: #666;">... y ${items.length - 3} más</div>` : ''}
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    });
+                    
+                    html += `
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        function getNombreTipo(tipo) {
+            const tipos = {
+                1: "Factura A",
+                2: "Nota de Débito A", 
+                3: "Nota de Crédito A",
+                6: "Factura B",
+                7: "Nota de Débito B",
+                8: "Nota de Crédito B", 
+                11: "Factura C",
+                51: "Factura M (Monotributo)",
+                52: "Nota de Débito M",
+                53: "Nota de Crédito M",
+                201: "FCE A (MiPyMEs)",
+                206: "FCE B (MiPyMEs)"
+            };
+            return tipos[tipo] || `Tipo ${tipo}`;
+        }
+        
+        function mostrarResultado(data) {
+            const container = document.getElementById('resultadoContainer');
+            
+            if (!data.success) {
+                container.innerHTML = `
+                    <div class="error-message">
+                        ❌ Error: ${data.error}
+                        ${data.detalle ? `<br><small>${data.detalle}</small>` : ''}
+                    </div>
+                `;
+                return;
+            }
+            
+            if (data.status === 'no_encontrado') {
+                container.innerHTML = `
+                    <div class="no-encontrado">
+                        📭 <strong>Comprobante no encontrado</strong><br>
+                        No existe el comprobante Tipo ${data.consulta.tipo} PV${data.consulta.punto_venta} #${data.consulta.numero} para el CUIT ${data.consulta.cuit}
+                    </div>
+                `;
+                return;
+            }
+            
+            if (data.status === 'encontrado') {
+                const datos = data.datos;
+                const items = data.items || [];
+                
+                let itemsHtml = '';
+                if (items.length > 0) {
+                    itemsHtml = `
+                        <div class="items-container">
+                            <div class="items-title">📦 Items del Comprobante (${datos.cantidad_items || items.length})</div>
+                            <table class="items-table">
+                                <thead>
+                                    <tr>
+                                        <th>Código MTX</th>
+                                        <th>Descripción</th>
+                                        <th>Cantidad</th>
+                                        <th>Precio Unit.</th>
+                                        <th>Total</th>
+                                        <th>IVA</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${items.map(item => `
+                                        <tr>
+                                            <td><span class="codigo-mtx">${item.codigo_mtx || '-'}</span></td>
+                                            <td>${item.descripcion || '-'}</td>
+                                            <td>${item.cantidad || '-'}</td>
+                                            <td>$${item.precio_unitario || '0'}</td>
+                                            <td>$${item.importe_total || '0'}</td>
+                                            <td>${item.alicuota_iva || '-'}%</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            ${datos.cantidad_items > items.length ? 
+                                `<p><small>Mostrando los primeros ${items.length} de ${datos.cantidad_items} items</small></p>` : ''
+                            }
+                        </div>
+                    `;
+                }
+                
+                container.innerHTML = `
+                    <div class="success-message">
+                        ✅ Comprobante encontrado exitosamente
+                    </div>
+                    
+                    <div class="comprobante-info">
+                        <div class="comprobante-header">
+                            <h2 class="comprobante-title">📋 Comprobante ${datos.tipo_comprobante}</h2>
+                            <p class="comprobante-subtitle">PV ${datos.punto_venta} - Nº ${datos.numero_comprobante}</p>
+                        </div>
+                        
+                        <div class="info-grid">
+                            <div>
+                                <div class="info-item">
+                                    <span class="info-label">Fecha Emisión:</span>
+                                    <span class="info-value">${datos.fecha_emision || '-'}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">CAE:</span>
+                                    <span class="info-value">${datos.cae || '-'}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Venc. CAE:</span>
+                                    <span class="info-value">${datos.fecha_vencimiento_cae || '-'}</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="info-item">
+                                    <span class="info-label">Receptor:</span>
+                                    <span class="info-value">${datos.receptor_denominacion || '-'}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Documento:</span>
+                                    <span class="info-value">${datos.receptor_numero_doc || '-'}</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <div class="info-item">
+                                    <span class="info-label">Importe Gravado:</span>
+                                    <span class="info-value">$${datos.importe_gravado || '0'}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">IVA:</span>
+                                    <span class="info-value">$${datos.importe_iva || '0'}</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label"><strong>Total:</strong></span>
+                                    <span class="info-value"><strong>$${datos.importe_total || '0'}</strong></span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${itemsHtml}
+                    </div>
+                    
+                    ${data.archivo_exportado ? `
+                        <div class="success-message">
+                            💾 Datos exportados a: ${data.archivo_exportado}
+                        </div>
+                    ` : ''}
+                `;
+            }
+        }
+        
+        // Formatear CUIT automáticamente
+        document.getElementById('cuit').addEventListener('input', function(e) {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 11) value = value.slice(0, 11);
+            e.target.value = value;
+        });
+    </script>
+</body>
+</html>

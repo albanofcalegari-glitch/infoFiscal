@@ -87,3 +87,4 @@ config_local.py
 # Archivos de prueba
 test_output/
 testing/
+nul

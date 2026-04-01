@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(test:*)",
+      "Bash(timeout 90 python buscar_exhaustivo.py)",
+      "Bash(tee:*)",
+      "Bash(cat:*)",
+      "Read(//c/Users/DELL/Desktop/proyectos python/**)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(dir:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

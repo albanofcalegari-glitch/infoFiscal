@@ -1,0 +1,96 @@
+/* Estilos para InfoFiscal - Estudio Contable */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+body {
+    font-family: 'Roboto', Arial, sans-serif;
+    background: #f6f8fa url('https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1200&q=80') no-repeat center center fixed;
+    background-size: cover;
+    color: #222;
+    margin: 0;
+    font-size: 15px;
+}
+
+.header {
+    background: #1a355e;
+    color: #fff;
+    padding: 18px 0 12px 0;
+    text-align: center;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    box-shadow: 0 2px 8px rgba(26,53,94,0.08);
+}
+
+.login-container {
+    width: 340px;
+    margin: 50px auto;
+    background: #fff;
+    padding: 28px 32px 32px 32px;
+    border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(26,53,94,0.10);
+}
+
+h2 {
+    text-align: center;
+    margin-bottom: 22px;
+    color: #1a355e;
+    font-weight: 700;
+    font-size: 1.1rem;
+}
+
+label {
+    display: block;
+    margin-top: 14px;
+    font-weight: 500;
+    font-size: 0.97em;
+}
+
+input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border: 1px solid #bfc9d1;
+    border-radius: 5px;
+    font-size: 0.97rem;
+    background: #f9fafb;
+    transition: border 0.2s;
+}
+input[type="text"]:focus, input[type="password"]:focus {
+    border: 1.5px solid #1a355e;
+    outline: none;
+}
+
+button {
+    width: 100%;
+    margin-top: 22px;
+    padding: 9px;
+    background: #1a355e;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+button:hover {
+    background: #274b7a;
+}
+
+.error {
+    color: #c00;
+    text-align: center;
+    margin-top: 14px;
+    font-weight: 500;
+}
+
+/* Página principal */
+.main-container {
+    max-width: 520px;
+    margin: 32px auto;
+    background: #fff;
+    padding: 28px 32px 32px 32px;
+    border-radius: 10px;
+    box-shadow: 0 4px 24px rgba(26,53,94,0.10);
+    text-align: center;
+}
