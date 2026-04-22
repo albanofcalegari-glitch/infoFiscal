@@ -2308,6 +2308,34 @@ def consultar_rcel():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD ANALYTICS — gráficos y métricas
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/dashboard')
+@login_required
+@role_required('admin', 'contador')
+def dashboard_analytics():
+    """Dashboard con gráficos de facturación, IVA y tendencias."""
+    from src.analytics import (kpis_estudio, facturacion_mensual,
+                                facturacion_por_tipo, top_clientes, iva_mensual)
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        kpis = kpis_estudio(cur, estudio_id)
+        fact_mensual = [dict(r) for r in facturacion_mensual(cur, estudio_id)]
+        fact_tipo = [dict(r) for r in facturacion_por_tipo(cur, estudio_id)]
+        top_cli = [dict(r) for r in top_clientes(cur, estudio_id)]
+        iva_m = iva_mensual(cur, estudio_id)
+
+    return render_template('dashboard.html',
+                         kpis=kpis,
+                         facturacion_mensual=fact_mensual,
+                         facturacion_tipo=fact_tipo,
+                         top_clientes=top_cli,
+                         iva_mensual=iva_m)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # LIQUIDACIÓN IVA — posición mensual y Libro IVA Digital
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -3045,6 +3073,291 @@ def padron_consultar():
         return jsonify(resultado), 400
 
     return jsonify(resultado), 200
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CALENDARIO IMPOSITIVO — vencimientos AFIP/ARCA
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/calendario')
+@login_required
+def calendario():
+    """Calendario de vencimientos impositivos."""
+    from src.calendario_impositivo import generar_calendario
+
+    cuit = request.args.get('cuit', '').strip()
+    condicion = request.args.get('condicion', 'RI')
+    meses = request.args.get('meses', 3, type=int)
+
+    vencimientos = []
+    if cuit:
+        vencimientos = generar_calendario(cuit, meses, condicion)
+
+    return render_template('calendario.html',
+                         cuit=cuit, condicion=condicion,
+                         meses=meses, vencimientos=vencimientos)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GESTIÓN DE CHEQUES — emitidos y recibidos
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/cheques')
+@login_required
+@role_required('admin', 'contador')
+def cheques_lista():
+    """Listado de cheques del estudio."""
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM cheques
+            WHERE estudio_id = %s
+            ORDER BY
+                CASE estado WHEN 'cartera' THEN 0 ELSE 1 END,
+                fecha_cobro ASC NULLS LAST,
+                created_at DESC
+        """, (estudio_id,))
+        cheques = cur.fetchall()
+
+    return render_template('cheques.html', cheques=cheques)
+
+
+@app.route('/cheques/registrar', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def cheques_registrar():
+    """Registrar un nuevo cheque."""
+    estudio_id = g.user['estudio_id']
+
+    tipo = request.form.get('tipo', 'recibido')
+    banco = request.form.get('banco', '').strip() or None
+    nro_cheque = request.form.get('nro_cheque', '').strip()
+    importe = request.form.get('importe', '0')
+    fecha_emision = request.form.get('fecha_emision')
+    fecha_cobro = request.form.get('fecha_cobro') or None
+    librador = request.form.get('librador', '').strip() or None
+    beneficiario = request.form.get('beneficiario', '').strip() or None
+
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO cheques
+                    (estudio_id, tipo, banco, nro_cheque, importe,
+                     fecha_emision, fecha_cobro, librador, beneficiario)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (estudio_id, tipo, banco, nro_cheque, importe,
+                  fecha_emision, fecha_cobro, librador, beneficiario))
+        flash('Cheque registrado correctamente.', 'success')
+    except Exception as e:
+        flash(f'Error al registrar cheque: {e}', 'error')
+
+    return redirect(url_for('cheques_lista'))
+
+
+@app.route('/cheques/<int:cheque_id>/estado', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def cheques_cambiar_estado(cheque_id):
+    """Cambiar estado de un cheque."""
+    estudio_id = g.user['estudio_id']
+    nuevo_estado = request.form.get('estado', '').strip()
+
+    estados_validos = ('depositado', 'cobrado', 'rechazado', 'endosado', 'vencido')
+    if nuevo_estado not in estados_validos:
+        flash('Estado no válido.', 'error')
+        return redirect(url_for('cheques_lista'))
+
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                UPDATE cheques SET estado = %s, updated_at = NOW()
+                WHERE id = %s AND estudio_id = %s
+            """, (nuevo_estado, cheque_id, estudio_id))
+        flash(f'Cheque actualizado a "{nuevo_estado}".', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+
+    return redirect(url_for('cheques_lista'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# NOTIFICACIONES — alertas internas
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/notificaciones')
+@login_required
+def notificaciones_lista():
+    """Listado de notificaciones del usuario."""
+    estudio_id = g.user['estudio_id']
+    usuario_id = g.user['id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM notificaciones
+            WHERE estudio_id = %s AND (usuario_id = %s OR usuario_id IS NULL)
+            ORDER BY created_at DESC
+            LIMIT 100
+        """, (estudio_id, usuario_id))
+        notificaciones = cur.fetchall()
+
+        cur.execute("""
+            SELECT COUNT(*) as c FROM notificaciones
+            WHERE estudio_id = %s AND (usuario_id = %s OR usuario_id IS NULL)
+              AND leida = FALSE
+        """, (estudio_id, usuario_id))
+        no_leidas = cur.fetchone()['c']
+
+    return render_template('notificaciones.html',
+                         notificaciones=notificaciones,
+                         no_leidas=no_leidas)
+
+
+@app.route('/notificaciones/<int:notif_id>/leer', methods=['POST'])
+@login_required
+def notificacion_leer(notif_id):
+    """Marcar notificación como leída."""
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE notificaciones SET leida = TRUE
+            WHERE id = %s AND estudio_id = %s
+        """, (notif_id, estudio_id))
+
+    return redirect(url_for('notificaciones_lista'))
+
+
+@app.route('/notificaciones/leer-todas', methods=['POST'])
+@login_required
+def notificaciones_leer_todas():
+    """Marcar todas las notificaciones como leídas."""
+    estudio_id = g.user['estudio_id']
+    usuario_id = g.user['id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE notificaciones SET leida = TRUE
+            WHERE estudio_id = %s AND (usuario_id = %s OR usuario_id IS NULL)
+              AND leida = FALSE
+        """, (estudio_id, usuario_id))
+
+    flash('Todas las notificaciones marcadas como leídas.', 'success')
+    return redirect(url_for('notificaciones_lista'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXPORTACIÓN PDF — facturas emitidas
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/factura/<int:comprobante_id>/pdf')
+@login_required
+@role_required('admin', 'contador')
+def factura_pdf(comprobante_id):
+    """Genera PDF de un comprobante emitido."""
+    from src.exportar_pdf import generar_pdf_factura
+
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM comprobantes_emitidos
+            WHERE id = %s AND estudio_id = %s
+        """, (comprobante_id, estudio_id))
+        comprobante = cur.fetchone()
+
+        if not comprobante:
+            flash('Comprobante no encontrado.', 'error')
+            return redirect(url_for('consulta_facturas_unificada'))
+
+        cur.execute("""
+            SELECT nombre, cuit, domicilio_fiscal
+            FROM estudios WHERE id = %s
+        """, (estudio_id,))
+        estudio = cur.fetchone()
+
+    pdf_bytes = generar_pdf_factura(comprobante, estudio)
+
+    from flask import Response
+    tipo_cbte = comprobante.get('tipo_comprobante', 0)
+    nro = comprobante.get('nro_comprobante', 0)
+    filename = f"factura_{tipo_cbte}_{nro:08d}.pdf"
+
+    return Response(
+        pdf_bytes,
+        mimetype='application/pdf',
+        headers={'Content-Disposition': f'inline; filename="{filename}"'}
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# IMPORTACIÓN MASIVA — CSV/XLS de comprobantes
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/importar')
+@login_required
+@role_required('admin', 'contador')
+def importar_masivo():
+    """Página de importación masiva de comprobantes."""
+    return render_template('importar.html')
+
+
+@app.route('/importar/procesar', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def importar_procesar():
+    """Procesa archivo CSV/XLS de comprobantes."""
+    from src.importar_masivo import procesar_archivo
+
+    estudio_id = g.user['estudio_id']
+    archivo = request.files.get('archivo')
+    tipo_import = request.form.get('tipo', 'emitidos')
+
+    if not archivo or archivo.filename == '':
+        flash('Seleccione un archivo.', 'error')
+        return redirect(url_for('importar_masivo'))
+
+    ext = archivo.filename.rsplit('.', 1)[-1].lower() if '.' in archivo.filename else ''
+    if ext not in ('csv', 'xlsx', 'xls'):
+        flash('Formato no soportado. Use CSV o Excel.', 'error')
+        return redirect(url_for('importar_masivo'))
+
+    try:
+        resultado = procesar_archivo(archivo, ext, estudio_id, tipo_import)
+        flash(f'Importación completada: {resultado["insertados"]} registros importados, '
+              f'{resultado["errores"]} errores.', 'success')
+        if resultado.get('detalle_errores'):
+            for err in resultado['detalle_errores'][:5]:
+                flash(f'Fila {err["fila"]}: {err["error"]}', 'error')
+    except Exception as e:
+        flash(f'Error procesando archivo: {e}', 'error')
+
+    return redirect(url_for('importar_masivo'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROYECCIÓN DE GANANCIAS — estimación anual
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/ganancias')
+@login_required
+@role_required('admin', 'contador')
+def proyeccion_ganancias():
+    """Proyección anual de Ganancias PH/PJ."""
+    from src.ganancias import proyectar_ganancias
+    from datetime import date
+
+    estudio_id = g.user['estudio_id']
+    anio = request.args.get('anio', date.today().year, type=int)
+    tipo_persona = request.args.get('tipo', 'PH')
+
+    with get_cursor() as cur:
+        proyeccion = proyectar_ganancias(cur, estudio_id, anio, tipo_persona)
+
+    return render_template('ganancias.html',
+                         proyeccion=proyeccion,
+                         anio=anio,
+                         tipo_persona=tipo_persona)
 
 
 if __name__ == '__main__':

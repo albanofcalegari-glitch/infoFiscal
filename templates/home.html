@@ -64,7 +64,14 @@
         <h2 class="text-2xl font-bold text-white mb-6 text-center">Panel principal</h2>
 
         <!-- Navigation cards -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {% if user and user.rol in ['admin', 'contador'] %}
+            <a href="{{ url_for('dashboard_analytics') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-sky-400 hover:shadow-lg transition group col-span-2">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-sky-600 transition">Dashboard</div>
+                <div class="text-sm text-slate-500 mt-1">Metricas, graficos y tendencias del estudio</div>
+            </a>
+            {% endif %}
             <a href="{{ url_for('nuevo_cliente') }}"
                class="glass rounded-xl p-6 border border-white/40 hover:border-blue-400 hover:shadow-lg transition group">
                 <div class="text-lg font-semibold text-slate-800 group-hover:text-blue-600 transition">Nuevo cliente</div>
@@ -114,6 +121,33 @@
                class="glass rounded-xl p-6 border border-white/40 hover:border-purple-400 hover:shadow-lg transition group">
                 <div class="text-lg font-semibold text-slate-800 group-hover:text-purple-600 transition">Documentos</div>
                 <div class="text-sm text-slate-500 mt-1">Gestion documental y adjuntos</div>
+            </a>
+            <a href="{{ url_for('calendario') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-rose-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-rose-600 transition">Calendario</div>
+                <div class="text-sm text-slate-500 mt-1">Vencimientos impositivos ARCA</div>
+            </a>
+            {% if user and user.rol in ['admin', 'contador'] %}
+            <a href="{{ url_for('cheques_lista') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-violet-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-violet-600 transition">Cheques</div>
+                <div class="text-sm text-slate-500 mt-1">Gestion de cheques emitidos y recibidos</div>
+            </a>
+            <a href="{{ url_for('proyeccion_ganancias') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-lime-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-lime-600 transition">Ganancias</div>
+                <div class="text-sm text-slate-500 mt-1">Proyeccion anual PH/PJ</div>
+            </a>
+            <a href="{{ url_for('importar_masivo') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-fuchsia-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-fuchsia-600 transition">Importar</div>
+                <div class="text-sm text-slate-500 mt-1">Carga masiva CSV/Excel</div>
+            </a>
+            {% endif %}
+            <a href="{{ url_for('notificaciones_lista') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-yellow-400 hover:shadow-lg transition group relative">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-yellow-600 transition">Notificaciones</div>
+                <div class="text-sm text-slate-500 mt-1">Alertas y avisos del sistema</div>
             </a>
             {% if user and user.rol in ['admin', 'contador'] %}
             <a href="{{ url_for('config_afip') }}"

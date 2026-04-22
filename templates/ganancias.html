@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Proyeccion Ganancias</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Proyeccion de Ganancias</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Filters -->
+        <div class="glass rounded-xl shadow-xl p-6">
+            <form method="GET" action="{{ url_for('proyeccion_ganancias') }}" class="flex flex-col sm:flex-row gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Periodo fiscal</label>
+                    <select name="anio" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                        {% for a in range(anio - 2, anio + 2) %}
+                        <option value="{{ a }}" {{ 'selected' if a == anio }}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de persona</label>
+                    <select name="tipo" class="px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                        <option value="PH" {{ 'selected' if tipo_persona == 'PH' }}>Persona Humana</option>
+                        <option value="PJ" {{ 'selected' if tipo_persona == 'PJ' }}>Persona Juridica</option>
+                    </select>
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm">
+                    Calcular
+                </button>
+            </form>
+        </div>
+
+        {% if proyeccion %}
+        <!-- Summary cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Ingresos brutos</div>
+                <div class="text-xl font-bold text-blue-600 mt-1">${{ "{:,.0f}".format(proyeccion.ingresos_brutos) }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Gastos deducibles</div>
+                <div class="text-xl font-bold text-slate-600 mt-1">${{ "{:,.0f}".format(proyeccion.gastos_deducibles) }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Impuesto det.</div>
+                <div class="text-xl font-bold text-red-600 mt-1">${{ "{:,.0f}".format(proyeccion.impuesto_determinado) }}</div>
+                <div class="text-xs text-slate-400">{{ "{:.1f}".format(proyeccion.alicuota_efectiva) }}% efectiva</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Saldo a pagar</div>
+                <div class="text-xl font-bold {{ 'text-green-600' if proyeccion.saldo_a_pagar == 0 else 'text-red-600' }} mt-1">
+                    ${{ "{:,.0f}".format(proyeccion.saldo_a_pagar) }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Detail breakdown -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Liquidación -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Liquidacion estimada {{ anio }}</h3>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-600">Ingresos brutos (proyectados 12 meses)</span>
+                        <span class="font-medium">${{ "{:,.0f}".format(proyeccion.ingresos_brutos) }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-600">(-) Gastos deducibles</span>
+                        <span class="font-medium text-slate-500">${{ "{:,.0f}".format(proyeccion.gastos_deducibles) }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-200 pb-2 font-semibold">
+                        <span class="text-slate-800">Ganancia neta</span>
+                        <span>${{ "{:,.0f}".format(proyeccion.ganancia_neta) }}</span>
+                    </div>
+
+                    {% if proyeccion.tipo_persona == 'PH' and proyeccion.deducciones %}
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-600">(-) Ganancia no imponible</span>
+                        <span class="text-slate-500">${{ "{:,.0f}".format(proyeccion.deducciones.ganancia_no_imponible) }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-600">(-) Deduccion especial 4ta cat.</span>
+                        <span class="text-slate-500">${{ "{:,.0f}".format(proyeccion.deducciones.deduccion_especial) }}</span>
+                    </div>
+                    {% endif %}
+
+                    <div class="flex justify-between border-b border-slate-200 pb-2 font-semibold">
+                        <span class="text-slate-800">Ganancia neta sujeta a impuesto</span>
+                        <span>${{ "{:,.0f}".format(proyeccion.ganancia_neta_sujeta) }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-red-600 font-semibold">Impuesto determinado</span>
+                        <span class="font-bold text-red-600">${{ "{:,.0f}".format(proyeccion.impuesto_determinado) }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-200 pb-2">
+                        <span class="text-slate-600">(-) Retenciones sufridas</span>
+                        <span class="text-green-600">${{ "{:,.0f}".format(proyeccion.retenciones_sufridas) }}</span>
+                    </div>
+                    <div class="flex justify-between pt-2">
+                        <span class="text-lg font-bold text-slate-800">Saldo a pagar</span>
+                        <span class="text-lg font-bold {{ 'text-green-600' if proyeccion.saldo_a_pagar == 0 else 'text-red-600' }}">
+                            ${{ "{:,.0f}".format(proyeccion.saldo_a_pagar) }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ingresos mensuales chart -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Ingresos mensuales {{ anio }}</h3>
+                {% if proyeccion.ingresos_mensuales %}
+                <canvas id="chartIngresos" height="250"></canvas>
+                {% else %}
+                <p class="text-slate-500 text-sm italic">Sin datos de facturacion para {{ anio }}.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+    </main>
+
+    {% if proyeccion and proyeccion.ingresos_mensuales %}
+    <script>
+    const data = {{ proyeccion.ingresos_mensuales | tojson }};
+    new Chart(document.getElementById('chartIngresos'), {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.periodo),
+            datasets: [{
+                label: 'Ingresos netos',
+                data: data.map(d => d.monto),
+                backgroundColor: '#3b82f680',
+                borderColor: '#3b82f6',
+                borderWidth: 1,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k' } }
+            }
+        }
+    });
+    </script>
+    {% endif %}
+</body>
+</html>

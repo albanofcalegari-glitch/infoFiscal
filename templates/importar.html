@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Importacion Masiva</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Importacion Masiva</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+            <div class="glass rounded-xl p-4 border-l-4 {{ 'border-green-500' if cat == 'success' else 'border-red-500' }}">
+                <p class="{{ 'text-green-700' if cat == 'success' else 'text-red-700' }}">{{ msg }}</p>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h2 class="text-lg font-bold text-slate-800 mb-4">Cargar comprobantes desde archivo</h2>
+            <form action="{{ url_for('importar_procesar') }}" method="POST" enctype="multipart/form-data" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de comprobantes</label>
+                        <select name="tipo" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                            <option value="emitidos">Comprobantes emitidos (ventas)</option>
+                            <option value="recibidos">Comprobantes recibidos (compras)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Archivo (CSV o Excel)</label>
+                        <input type="file" name="archivo" accept=".csv,.xlsx,.xls" required
+                               class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-blue-100 file:text-blue-700 file:text-sm file:font-medium">
+                    </div>
+                </div>
+
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm">
+                    Importar
+                </button>
+            </form>
+        </div>
+
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h3 class="text-sm font-bold text-slate-600 mb-3">Formato esperado</h3>
+            <p class="text-sm text-slate-500 mb-3">
+                El archivo debe tener una fila de encabezados y luego los datos. Se aceptan los siguientes nombres de columnas:
+            </p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-3 py-2 text-left">Campo</th>
+                            <th class="px-3 py-2 text-left">Columnas aceptadas</th>
+                            <th class="px-3 py-2 text-center">Requerido</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <tr><td class="px-3 py-2">Tipo comprobante</td><td class="px-3 py-2 text-slate-500">tipo_comprobante, tipo, cbte_tipo</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Punto de venta</td><td class="px-3 py-2 text-slate-500">punto_venta, pto_vta, sucursal</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Nro comprobante</td><td class="px-3 py-2 text-slate-500">nro_comprobante, numero, nro</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Fecha emision</td><td class="px-3 py-2 text-slate-500">fecha_emision, fecha (DD/MM/YYYY o YYYY-MM-DD)</td><td class="px-3 py-2 text-center font-bold text-red-600">Si</td></tr>
+                        <tr><td class="px-3 py-2">CUIT receptor</td><td class="px-3 py-2 text-slate-500">cuit_receptor, cuit</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Nombre receptor</td><td class="px-3 py-2 text-slate-500">receptor_nombre, razon_social, nombre</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Importe neto</td><td class="px-3 py-2 text-slate-500">importe_neto, neto, gravado</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">IVA</td><td class="px-3 py-2 text-slate-500">importe_iva, iva</td><td class="px-3 py-2 text-center">-</td></tr>
+                        <tr><td class="px-3 py-2">Total</td><td class="px-3 py-2 text-slate-500">importe_total, total</td><td class="px-3 py-2 text-center font-bold text-red-600">Si</td></tr>
+                        <tr><td class="px-3 py-2">CAE</td><td class="px-3 py-2 text-slate-500">cae, cae_nro</td><td class="px-3 py-2 text-center">-</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+</body>
+</html>

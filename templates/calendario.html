@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Calendario Impositivo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Calendario Impositivo</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Filters -->
+        <div class="glass rounded-xl shadow-xl p-6">
+            <form method="GET" action="{{ url_for('calendario') }}" class="flex flex-col sm:flex-row gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-slate-600 mb-1">CUIT</label>
+                    <input type="text" name="cuit" value="{{ cuit }}" placeholder="20-12345678-9" required
+                           class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Condicion</label>
+                    <select name="condicion" class="px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                        <option value="RI" {{ 'selected' if condicion == 'RI' }}>Resp. Inscripto</option>
+                        <option value="MT" {{ 'selected' if condicion == 'MT' }}>Monotributo</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Meses</label>
+                    <select name="meses" class="px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                        <option value="1" {{ 'selected' if meses == 1 }}>1 mes</option>
+                        <option value="3" {{ 'selected' if meses == 3 }}>3 meses</option>
+                        <option value="6" {{ 'selected' if meses == 6 }}>6 meses</option>
+                    </select>
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm">
+                    Generar
+                </button>
+            </form>
+        </div>
+
+        <!-- Summary -->
+        {% if vencimientos %}
+        <div class="grid grid-cols-3 gap-4">
+            {% set vencidos = vencimientos|selectattr('prioridad', 'equalto', 'critica')|list|length %}
+            {% set proximos = vencimientos|selectattr('prioridad', 'equalto', 'alta')|list|length %}
+            {% set normales = vencimientos|selectattr('prioridad', 'equalto', 'normal')|list|length %}
+            <div class="glass rounded-xl p-4 text-center border-l-4 border-red-500">
+                <div class="text-3xl font-bold text-red-600">{{ vencidos }}</div>
+                <div class="text-sm text-slate-500">Vencidos</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border-l-4 border-amber-500">
+                <div class="text-3xl font-bold text-amber-600">{{ proximos }}</div>
+                <div class="text-sm text-slate-500">Proximos 5 dias</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border-l-4 border-green-500">
+                <div class="text-3xl font-bold text-green-600">{{ normales }}</div>
+                <div class="text-sm text-slate-500">Pendientes</div>
+            </div>
+        </div>
+
+        <!-- Timeline -->
+        <div class="space-y-2">
+            {% set current_month = '' %}
+            {% for v in vencimientos %}
+            {% set mes_label = v.fecha.strftime('%B %Y') %}
+            {% if mes_label != current_month %}
+            {% set current_month = mes_label %}
+            <h3 class="text-white font-bold text-sm uppercase tracking-wider mt-4 mb-2">{{ mes_label }}</h3>
+            {% endif %}
+            <div class="glass rounded-xl p-4 flex items-center gap-4 border-l-4
+                {% if v.prioridad == 'critica' %}border-red-500
+                {% elif v.prioridad == 'alta' %}border-amber-500
+                {% else %}border-green-500{% endif %}">
+
+                <div class="text-center min-w-[60px]">
+                    <div class="text-2xl font-bold text-slate-800">{{ v.fecha.day }}</div>
+                    <div class="text-xs text-slate-400">{{ v.fecha.strftime('%a') }}</div>
+                </div>
+
+                <div class="flex-1">
+                    <div class="font-medium text-slate-800">{{ v.descripcion }}</div>
+                    <div class="text-xs text-slate-400">
+                        CUIT term. {{ v.terminacion_cuit }} &mdash;
+                        <span class="px-1.5 py-0.5 rounded text-xs font-medium
+                            {% if v.tipo == 'iva' %}bg-blue-100 text-blue-700
+                            {% elif v.tipo == 'ganancias' %}bg-purple-100 text-purple-700
+                            {% elif v.tipo == 'iibb' %}bg-teal-100 text-teal-700
+                            {% elif v.tipo == 'monotributo' %}bg-green-100 text-green-700
+                            {% elif v.tipo == 'suss' %}bg-orange-100 text-orange-700
+                            {% else %}bg-slate-100 text-slate-600{% endif %}">
+                            {{ v.tipo|upper }}
+                        </span>
+                    </div>
+                </div>
+
+                <div>
+                    {% if v.prioridad == 'critica' %}
+                    <span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 animate-pulse">VENCIDO</span>
+                    {% elif v.prioridad == 'alta' %}
+                    <span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">PROXIMO</span>
+                    {% else %}
+                    <span class="text-sm text-slate-400">{{ v.fecha.strftime('%d/%m') }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% elif cuit %}
+        <div class="glass rounded-xl shadow-xl p-8 text-center text-slate-500">
+            No se encontraron vencimientos para los parametros ingresados.
+        </div>
+        {% else %}
+        <div class="glass rounded-xl shadow-xl p-8 text-center text-slate-500">
+            Ingrese un CUIT para generar el calendario de vencimientos.
+        </div>
+        {% endif %}
+
+    </main>
+</body>
+</html>

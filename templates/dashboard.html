@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Dashboard</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-7xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- KPI cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Clientes</div>
+                <div class="text-3xl font-bold text-slate-800 mt-1">{{ kpis.total_clientes }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Fact. este mes</div>
+                <div class="text-2xl font-bold text-blue-600 mt-1">${{ "{:,.0f}".format(kpis.facturacion_mes.total) }}</div>
+                <div class="text-xs text-slate-400">{{ kpis.facturacion_mes.cantidad }} comp.</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">vs mes ant.</div>
+                <div class="text-2xl font-bold mt-1 {{ 'text-green-600' if kpis.variacion_pct >= 0 else 'text-red-600' }}">
+                    {{ '+' if kpis.variacion_pct >= 0 }}{{ kpis.variacion_pct }}%
+                </div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Retenciones</div>
+                <div class="text-2xl font-bold text-amber-600 mt-1">${{ "{:,.0f}".format(kpis.retenciones_mes) }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Por cobrar</div>
+                <div class="text-2xl font-bold text-green-600 mt-1">${{ "{:,.0f}".format(kpis.por_cobrar) }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-xs text-slate-400 uppercase tracking-wider">Por pagar</div>
+                <div class="text-2xl font-bold text-red-600 mt-1">${{ "{:,.0f}".format(kpis.por_pagar) }}</div>
+            </div>
+        </div>
+
+        <!-- Charts row 1 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Facturación mensual -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Facturacion mensual</h3>
+                <canvas id="chartFacturacion" height="200"></canvas>
+            </div>
+
+            <!-- IVA mensual -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Posicion IVA mensual</h3>
+                <canvas id="chartIva" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Charts row 2 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Por tipo -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Facturacion por tipo</h3>
+                <canvas id="chartTipos" height="200"></canvas>
+            </div>
+
+            <!-- Top clientes -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Top clientes (12 meses)</h3>
+                {% if top_clientes %}
+                <div class="space-y-2">
+                    {% for tc in top_clientes %}
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-slate-700 truncate flex-1">{{ tc.receptor_nombre or tc.cuit_receptor or 'Sin nombre' }}</span>
+                        <span class="text-slate-400 mx-2">{{ tc.cantidad }} comp.</span>
+                        <span class="font-bold text-slate-800">${{ "{:,.0f}".format(tc.total) }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-slate-500 text-sm italic">Sin datos de facturacion.</p>
+                {% endif %}
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+    const TIPOS_CBTE = {1:'Fact A',2:'ND A',3:'NC A',6:'Fact B',7:'ND B',8:'NC B',11:'Fact C',12:'ND C',13:'NC C',51:'Fact M'};
+    const COLORS = ['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#06b6d4','#84cc16'];
+
+    // Facturación mensual
+    const factData = {{ facturacion_mensual | tojson }};
+    new Chart(document.getElementById('chartFacturacion'), {
+        type: 'bar',
+        data: {
+            labels: factData.map(d => d.periodo),
+            datasets: [
+                { label: 'Neto', data: factData.map(d => d.neto), backgroundColor: '#3b82f680', borderColor: '#3b82f6', borderWidth: 1 },
+                { label: 'IVA', data: factData.map(d => d.iva), backgroundColor: '#ef444480', borderColor: '#ef4444', borderWidth: 1 },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true, ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k' } }
+            }
+        }
+    });
+
+    // IVA mensual
+    const ivaData = {{ iva_mensual | tojson }};
+    new Chart(document.getElementById('chartIva'), {
+        type: 'line',
+        data: {
+            labels: ivaData.map(d => d.periodo),
+            datasets: [
+                { label: 'Debito', data: ivaData.map(d => d.debito), borderColor: '#ef4444', backgroundColor: '#ef444420', fill: true, tension: 0.3 },
+                { label: 'Credito', data: ivaData.map(d => d.credito), borderColor: '#10b981', backgroundColor: '#10b98120', fill: true, tension: 0.3 },
+                { label: 'Saldo', data: ivaData.map(d => d.saldo), borderColor: '#3b82f6', borderDash: [5,5], tension: 0.3 },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } },
+            scales: { y: { ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'k' } } }
+        }
+    });
+
+    // Por tipo
+    const tipoData = {{ facturacion_tipo | tojson }};
+    new Chart(document.getElementById('chartTipos'), {
+        type: 'doughnut',
+        data: {
+            labels: tipoData.map(d => TIPOS_CBTE[d.tipo_comprobante] || 'Tipo ' + d.tipo_comprobante),
+            datasets: [{
+                data: tipoData.map(d => d.total),
+                backgroundColor: COLORS,
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom' } }
+        }
+    });
+    </script>
+</body>
+</html>
