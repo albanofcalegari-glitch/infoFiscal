@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Cliente - InfoFiscal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+            <h1 class="text-lg font-bold text-white tracking-wide">InfoFiscal</h1>
+            <a href="/home" class="text-sm text-slate-300 hover:text-white transition">&larr; Volver</a>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-xl mx-auto px-4 py-8">
+
+        <h2 class="text-2xl font-bold text-white mb-6">Alta de nuevo cliente</h2>
+
+        {% if mensaje %}
+        <div class="mb-4 p-3 text-sm rounded-lg bg-green-50 text-green-700 border border-green-200">{{ mensaje }}</div>
+        {% endif %}
+        {% if error %}
+        <div class="mb-4 p-3 text-sm rounded-lg bg-red-50 text-red-600 border border-red-200 whitespace-pre-line">{{ error }}</div>
+        {% endif %}
+
+        <div class="glass rounded-xl shadow-xl p-6 border border-white/40">
+            <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <label for="tipoDocumento" class="block text-sm font-medium text-slate-700 mb-1">Tipo de Documento</label>
+                <select id="tipoDocumento" name="tipoDocumento" required
+                        class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer">
+                    <option value="">Seleccionar tipo de documento</option>
+                    <option value="DNI">DNI - Documento Nacional de Identidad</option>
+                    <option value="LE">LE - Libreta de Enrolamiento</option>
+                    <option value="LC">LC - Libreta Civica</option>
+                </select>
+
+                <label for="nroDocumento" class="block text-sm font-medium text-slate-700 mb-1">Nro. de Documento</label>
+                <input type="text" id="nroDocumento" name="nroDocumento" required
+                       class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                <label for="CUIT" class="block text-sm font-medium text-slate-700 mb-1">CUIT</label>
+                <input type="text" id="CUIT" name="CUIT"
+                       class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="apellido" class="block text-sm font-medium text-slate-700 mb-1">Apellido</label>
+                        <input type="text" id="apellido" name="apellido" required
+                               class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label for="nombres" class="block text-sm font-medium text-slate-700 mb-1">Nombres</label>
+                        <input type="text" id="nombres" name="nombres" required
+                               class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+
+                <label for="fechaNacimiento" class="block text-sm font-medium text-slate-700 mb-1">Fecha de Nacimiento</label>
+                <input type="date" id="fechaNacimiento" name="fechaNacimiento"
+                       class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+                <label for="condicionIVA" class="block text-sm font-medium text-slate-700 mb-1">Condicion IVA</label>
+                <select id="condicionIVA" name="condicionIVA"
+                        class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer">
+                    <option value="">Seleccionar condicion IVA</option>
+                    <option value="Responsable Inscripto">Responsable Inscripto</option>
+                    <option value="Monotributo">Monotributo</option>
+                    <option value="Exento">Exento</option>
+                    <option value="No Responsable">No Responsable</option>
+                    <option value="Consumidor Final">Consumidor Final</option>
+                </select>
+
+                <label for="categoriaMonotriibuto" class="block text-sm font-medium text-slate-700 mb-1">Categoria Monotributo</label>
+                <select id="categoriaMonotriibuto" name="categoriaMonotriibuto"
+                        class="w-full px-3 py-2 mb-6 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer disabled:bg-slate-100 disabled:text-slate-400">
+                    <option value="">No aplica / Seleccionar categoria</option>
+                    <option value="A">Categoria A</option>
+                    <option value="B">Categoria B</option>
+                    <option value="C">Categoria C</option>
+                    <option value="D">Categoria D</option>
+                    <option value="E">Categoria E</option>
+                    <option value="F">Categoria F</option>
+                    <option value="G">Categoria G</option>
+                    <option value="H">Categoria H</option>
+                    <option value="I">Categoria I</option>
+                    <option value="J">Categoria J</option>
+                    <option value="K">Categoria K</option>
+                </select>
+
+                <button type="submit"
+                        class="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                    Confirmar
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('condicionIVA').addEventListener('change', function() {
+            const cat = document.getElementById('categoriaMonotriibuto');
+            if (this.value === 'Monotributo') {
+                cat.disabled = false;
+                cat.required = true;
+            } else {
+                cat.disabled = true;
+                cat.value = '';
+                cat.required = false;
+            }
+        });
+        document.getElementById('categoriaMonotriibuto').disabled = true;
+
+        document.getElementById('nroDocumento').addEventListener('input', function() {
+            let valor = this.value.replace(/[^0-9]/g, '');
+            if (valor.length > 8) valor = valor.substring(0, 8);
+            this.value = valor;
+        });
+
+        document.getElementById('CUIT').addEventListener('input', function() {
+            let cuit = this.value.replace(/[^0-9]/g, '');
+            if (cuit.length > 11) cuit = cuit.substring(0, 11);
+            let formateado = cuit;
+            if (cuit.length > 2) formateado = cuit.substring(0, 2) + '-' + cuit.substring(2);
+            if (cuit.length > 10) formateado = cuit.substring(0, 2) + '-' + cuit.substring(2, 10) + '-' + cuit.substring(10);
+            this.value = formateado;
+        });
+
+        document.getElementById('CUIT').validarCUIT = function(cuit) {
+            const mult = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+            let suma = 0;
+            for (let i = 0; i < 10; i++) suma += parseInt(cuit[i]) * mult[i];
+            let dv = 11 - (suma % 11);
+            if (dv === 11) dv = 0;
+            if (dv === 10) dv = 9;
+            return dv === parseInt(cuit[10]);
+        };
+
+        ['apellido', 'nombres'].forEach(id => {
+            document.getElementById(id).addEventListener('input', function() {
+                this.value = this.value
+                    .replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]/g, '')
+                    .replace(/\b\w/g, l => l.toUpperCase());
+            });
+        });
+
+        document.querySelector('form').addEventListener('submit', function(e) {
+            let errores = [];
+            if (!document.getElementById('tipoDocumento').value) errores.push('Debe seleccionar un tipo de documento');
+            const nroDoc = document.getElementById('nroDocumento').value;
+            if (!nroDoc || nroDoc.length < 7) errores.push('Numero de documento invalido (minimo 7 digitos)');
+            const cuit = document.getElementById('CUIT').value.replace(/[^0-9]/g, '');
+            if (cuit && cuit.length !== 11) errores.push('CUIT debe tener exactamente 11 digitos');
+            if (!document.getElementById('apellido').value.trim() || document.getElementById('apellido').value.trim().length < 2)
+                errores.push('El apellido es obligatorio (minimo 2 caracteres)');
+            if (!document.getElementById('nombres').value.trim() || document.getElementById('nombres').value.trim().length < 2)
+                errores.push('Los nombres son obligatorios (minimo 2 caracteres)');
+            if (errores.length > 0) {
+                e.preventDefault();
+                alert('Corrija los siguientes errores:\n\n- ' + errores.join('\n- '));
+            }
+        });
+    </script>
+</body>
+</html>

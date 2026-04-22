@@ -2,36 +2,90 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - InfoFiscal</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='estudio.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
 </head>
-<body>
-    <div class="header">InfoFiscal - Estudio Contable</div>
-    <div class="login-container">
-        <h2>Iniciar Sesión</h2>
-        {% if error %}
-            <div class="error">{{ error }}</div>
-        {% endif %}
-        <form method="post">
-            <label for="usuario">Usuario</label>
-            <input type="text" id="usuario" name="usuario" required style="width:100%; box-sizing:border-box;">
-            <label for="contrasena">Contraseña</label>
-            <div style="position:relative; width:100%;">
-                <input type="password" id="contrasena" name="contrasena" required style="width:100%; padding-right:2.2em; box-sizing:border-box;">
-                <button type="button" onclick="togglePassword()" style="position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#1a355e; font-size:1.2em; padding:0; margin:0; line-height:1; height:1.5em; width:1.8em; display:flex; align-items:center; justify-content:center;">👁️</button>
-            </div>
-            <button type="submit">Ingresar</button>
-            <script>
-            function togglePassword() {
-                var pwd = document.getElementById('contrasena');
-                if (pwd.type === 'password') {
-                    pwd.type = 'text';
-                } else {
-                    pwd.type = 'password';
-                }
-            }
-            </script>
-        </form>
+<body class="min-h-screen bg-slate-900">
+
+    <!-- Background image -->
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
     </div>
+
+    <!-- Header -->
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-4xl mx-auto px-6 py-4">
+            <h1 class="text-lg font-bold text-white tracking-wide">InfoFiscal</h1>
+        </div>
+    </header>
+
+    <!-- Login form -->
+    <main class="relative z-10 flex items-center justify-center px-4 py-16">
+        <div class="glass rounded-xl shadow-xl p-8 w-full max-w-sm">
+            <h2 class="text-xl font-bold text-slate-800 text-center mb-6">Iniciar Sesion</h2>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    {% if category == 'success' %}
+                    <div class="mb-4 p-3 text-sm rounded-lg bg-green-50 text-green-700 border border-green-200">{{ message }}</div>
+                    {% else %}
+                    <div class="mb-4 p-3 text-sm rounded-lg bg-red-50 text-red-600 border border-red-200">{{ message }}</div>
+                    {% endif %}
+                {% endfor %}
+            {% endwith %}
+
+            {% if error %}
+                <div class="mb-4 p-3 text-sm rounded-lg bg-red-50 text-red-600 border border-red-200">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('auth.login') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <label for="email" class="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                <input type="email" id="email" name="email" required autocomplete="email"
+                       value="{{ request.form.get('email', '') }}"
+                       class="w-full px-3 py-2 mb-4 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+
+                <label for="password" class="block text-sm font-medium text-slate-700 mb-1">Contrasena</label>
+                <div class="relative mb-6">
+                    <input type="password" id="password" name="password" required autocomplete="current-password"
+                           class="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <button type="button" onclick="togglePassword()"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 bg-transparent border-none cursor-pointer text-lg p-0">
+                        <span id="eye-icon">&#128065;</span>
+                    </button>
+                </div>
+
+                <button type="submit"
+                        class="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                    Ingresar
+                </button>
+            </form>
+        </div>
+    </main>
+
+    <script>
+    function togglePassword() {
+        var pwd = document.getElementById('password');
+        var icon = document.getElementById('eye-icon');
+        if (pwd.type === 'password') {
+            pwd.type = 'text';
+            icon.style.opacity = '0.5';
+        } else {
+            pwd.type = 'password';
+            icon.style.opacity = '1';
+        }
+    }
+    </script>
 </body>
 </html>

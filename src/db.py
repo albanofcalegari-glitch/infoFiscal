@@ -79,28 +79,33 @@ def close_pool() -> None:
 @contextmanager
 def get_cursor(
     row_factory=None,
+    estudio_id: int | None = None,
 ) -> Generator[psycopg.Cursor, None, None]:
     """
     Context manager que provee un cursor dentro de una transacción.
 
-        with get_cursor() as cur:
-            cur.execute("SELECT * FROM usuarios WHERE estudio_id = %s", (estudio_id,))
-            rows = cur.fetchall()   # lista de dicts
+        with get_cursor(estudio_id=g.user['estudio_id']) as cur:
+            cur.execute("SELECT * FROM clientes WHERE estudio_id = %s", (estudio_id,))
+            rows = cur.fetchall()
 
     - Commit automático al salir sin excepción.
     - Rollback automático si se lanza una excepción.
-    - row_factory: None usa dict_row (default del pool). Pasar psycopg.rows.tuple_row
-      si se necesita acceso por índice numérico.
-
-    IMPORTANTE — aislamiento multi-tenant:
-        Este método NO inyecta estudio_id. Esa responsabilidad es del repo layer.
-        Ninguna query de negocio debe omitir el filtro por estudio_id.
+    - row_factory: None usa dict_row (default del pool).
+    - estudio_id: si se pasa, setea app.estudio_id en la sesión PostgreSQL
+      para que las RLS policies filtren automáticamente por tenant.
+      Si es None (superadmin o scripts), no se setea y RLS permite todo.
     """
     assert _pool is not None, "init_pool() no fue llamado antes de get_cursor()"
 
     with _pool.connection() as conn:
         if row_factory is not None:
             conn.row_factory = row_factory
+
+        # RLS: setear contexto de tenant para esta transacción
+        if estudio_id is not None:
+            conn.execute(
+                "SET LOCAL app.estudio_id = %s", (str(estudio_id),)
+            )
 
         try:
             with conn.cursor() as cur:

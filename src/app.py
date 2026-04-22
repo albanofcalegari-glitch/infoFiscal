@@ -1,63 +1,49 @@
 ﻿# -*- coding: utf-8 -*-
 
-# --- IMPORTS OPTIMIZADOS ---
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file, flash
+# --- IMPORTS ---
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, send_file, flash, g
 from pathlib import Path
 import os
+import requests as _requests
 
 # Cargar variables de entorno del archivo .env
 try:
     from dotenv import load_dotenv
-    # Cargar .env desde el directorio padre (donde está el .env)
     env_path = Path(__file__).parent.parent / '.env'
     load_dotenv(env_path)
-    print(f"Archivo .env cargado desde: {env_path}")
-    print(f"INFOFISCAL_MODE: {os.environ.get('INFOFISCAL_MODE', 'No configurado')}")
 except ImportError:
-    print("python-dotenv no disponible")
+    pass
+
+from flask_wtf.csrf import CSRFProtect
+
+from src.config import Config
+from src.db import init_pool, close_pool, health_check, get_cursor
+from src.auth import auth_bp
+from src.auth.decorators import login_required, role_required
+from src.ssl_afip_config import crear_session_afip
 
 # Configurar rutas absolutas para templates y static
-import os
 template_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'templates')
 static_folder = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static')
 
-app = Flask(__name__, 
+app = Flask(__name__,
            template_folder=template_folder,
            static_folder=static_folder)
-app.secret_key = 'cambia-esto-por-una-clave-segura'
+app.secret_key = Config.SECRET_KEY
 
-# Cache para conexiones de BD
-_db_connection_cache = None
+# Proteccion CSRF global — valida token en todo POST/PUT/DELETE
+csrf = CSRFProtect(app)
 
-def get_db_connection():
-    """Obtener conexión d                    cursor.execute('UPDATE usuario SET cantidadDeIntentos = ? WHERE usuario = ?', (intentos, usuario))
-                    error = f'Contraseña incorrecta. Intento {intentos} de 5.'
-                conn.commit() reutilizable"""
-    global _db_connection_cache
-    
-    # Verificar si la conexión existe y está válida
-    if _db_connection_cache is not None:
-        try:
-            # Test rápido para ver si la conexión funciona
-            _db_connection_cache.execute('SELECT 1')
-            return _db_connection_cache
-        except:
-            # Conexión cerrada o inválida, crear nueva
-            _db_connection_cache = None
-    
-    # Crear nueva conexión
-    if _db_connection_cache is None:
-        import sqlite3
-        db_path = Path(__file__).parent.parent / 'infofiscal.db'
-        _db_connection_cache = sqlite3.connect(str(db_path), check_same_thread=False)
-        _db_connection_cache.row_factory = sqlite3.Row
-        
-    return _db_connection_cache
+# Registrar blueprint de autenticacion
+app.register_blueprint(auth_bp)
 
-def get_bcrypt():
-    """Lazy import de bcrypt"""
-    import bcrypt
-    return bcrypt
+# Inicializar pool PostgreSQL
+init_pool()
+
+import atexit
+atexit.register(close_pool)
+
+
 
 """Endpoint actualizado: descarga/enumeración estructurada de comprobantes AFIP
 Devuelve estados claros:
@@ -70,10 +56,12 @@ Parámetros query:
   max_por_tipo (opcional, default 3)
 """
 @app.route('/descargar-facturas')
+@login_required
+@role_required('admin')
 def descargar_facturas():
     """
     Endpoint actualizado: Descarga comprobantes AFIP usando afip_extract_by_date.py
-    
+
     Parámetros:
     - cuit: CUIT objetivo (requerido)
     - desde: Fecha desde YYYY-MM-DD (opcional, default: último mes)
@@ -81,9 +69,6 @@ def descargar_facturas():
     - incluir_tipos: Tipos a incluir separados por coma (opcional)
     - excluir_tipos: Tipos a excluir separados por coma (opcional)
     """
-    if 'usuario' not in session:
-        return jsonify({'success': False, 'error': 'No autorizado'}), 401
-    
     cuit = request.args.get('cuit')
     if not cuit:
         return jsonify({'success': False, 'error': 'CUIT requerido'}), 400
@@ -133,8 +118,8 @@ def descargar_facturas():
         if request.args.get('excluir_tipos'):
             excluir_tipos = [int(x.strip()) for x in request.args.get('excluir_tipos').split(',') if x.strip().isdigit()]
 
-        # Configurar variables de entorno temporalmente para afip_extract_by_date
-        consultor_cuit = os.environ.get('AFIP_CONSULTOR_CUIT', '20321518045')
+        # CUIT solicitante: dueño del certificado (estudio contable)
+        consultor_cuit = Config.AFIP_SOLICITANTE_CUIT
         
         # Setear variables para afip_extract_by_date
         os.environ['AFIP_ENV'] = 'prod' if modo_produccion else 'homo'
@@ -244,6 +229,8 @@ def descargar_facturas():
         }), 500
 
 @app.route('/buscar-wsmtxca-completo')
+@login_required
+@role_required('admin', 'contador')
 def buscar_wsmtxca_completo():
     """Buscar todos los tipos de comprobantes WSMTXCA para un CUIT"""
     try:
@@ -380,11 +367,10 @@ def buscar_wsmtxca_completo():
         }), 500
 
 @app.route('/buscar-cliente', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
 def buscar_cliente():
     """Buscar cliente en la base de datos"""
-    if 'usuario' not in session:
-        return jsonify({'success': False, 'error': 'No autorizado'}), 401
-
     try:
         # Obtener datos del formulario o JSON
         if request.content_type and 'application/json' in request.content_type:
@@ -397,69 +383,55 @@ def buscar_cliente():
         if not busqueda:
             return jsonify({'success': False, 'error': 'Parámetro de búsqueda requerido'})
         
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Búsqueda más flexible
-        print(f"DEBUG: Buscando cliente con término: '{busqueda}'")
-        if len(busqueda) == 11 and busqueda.isdigit():
-            # Buscar por CUIT (11 dígitos)
-            print("DEBUG: Búsqueda por CUIT (11 dígitos)")
-            cursor.execute('''
-                SELECT id, tipoDocumento, nroDocumento, CUIT, apellido, nombres, 
-                       fechaNacimiento, condicionIVA, categoriaMonotriibuto
-                FROM clientes 
-                WHERE REPLACE(REPLACE(CUIT, '-', ''), ' ', '') = ?
-            ''', (busqueda,))
-        elif busqueda.isdigit():
-            # Buscar por DNI (menos de 11 dígitos)
-            print("DEBUG: Búsqueda por DNI")
-            cursor.execute('''
-                SELECT id, tipoDocumento, nroDocumento, CUIT, apellido, nombres, 
-                       fechaNacimiento, condicionIVA, categoriaMonotriibuto
-                FROM clientes 
-                WHERE nroDocumento = ?
-            ''', (busqueda,))
-        else:
-            # Buscar por nombre (texto)
-            print("DEBUG: Búsqueda por nombre")
-            cursor.execute('''
-                SELECT id, tipoDocumento, nroDocumento, CUIT, apellido, nombres, 
-                       fechaNacimiento, condicionIVA, categoriaMonotriibuto
-                FROM clientes 
-                WHERE LOWER(apellido) LIKE LOWER(?) OR LOWER(nombres) LIKE LOWER(?)
-            ''', (f'%{busqueda}%', f'%{busqueda}%'))
-        
-        # Obtener todos los resultados que coincidan
-        clientes = cursor.fetchall()
-        print(f"DEBUG: Encontrados {len(clientes)} clientes")
-        
+        estudio_id = g.user['estudio_id']
+        with get_cursor() as cur:
+            if len(busqueda) == 11 and busqueda.isdigit():
+                cur.execute("""
+                    SELECT id, tipo_documento, nro_documento, cuit, apellido, nombres,
+                           fecha_nacimiento, condicion_iva, categoria_monotributo
+                    FROM clientes
+                    WHERE estudio_id = %s
+                      AND REPLACE(REPLACE(cuit, '-', ''), ' ', '') = %s
+                """, (estudio_id, busqueda))
+            elif busqueda.isdigit():
+                cur.execute("""
+                    SELECT id, tipo_documento, nro_documento, cuit, apellido, nombres,
+                           fecha_nacimiento, condicion_iva, categoria_monotributo
+                    FROM clientes
+                    WHERE estudio_id = %s AND nro_documento = %s
+                """, (estudio_id, busqueda))
+            else:
+                cur.execute("""
+                    SELECT id, tipo_documento, nro_documento, cuit, apellido, nombres,
+                           fecha_nacimiento, condicion_iva, categoria_monotributo
+                    FROM clientes
+                    WHERE estudio_id = %s
+                      AND (LOWER(apellido) LIKE LOWER(%s) OR LOWER(nombres) LIKE LOWER(%s))
+                """, (estudio_id, f'%{busqueda}%', f'%{busqueda}%'))
+
+            clientes = cur.fetchall()
+
         if clientes:
             clientes_list = []
-            for cliente in clientes:
+            for c in clientes:
                 cliente_dict = {
-                    'id': cliente[0],
-                    'tipoDocumento': cliente[1],
-                    'nroDocumento': cliente[2],
-                    'cuit_dni': cliente[3],  # Usar cuit_dni para compatibilidad con frontend
-                    'CUIT': cliente[3],
-                    'apellido': cliente[4],
-                    'nombres': cliente[5],
-                    'nombre': f"{cliente[4]}, {cliente[5]}",  # Nombre completo para display
-                    'fechaNacimiento': cliente[6],
-                    'condicionIVA': cliente[7],
-                    'categoriaMonotriibuto': cliente[8]
+                    'id': c['id'],
+                    'tipoDocumento': c['tipo_documento'],
+                    'nroDocumento': c['nro_documento'],
+                    'cuit_dni': c['cuit'],
+                    'CUIT': c['cuit'],
+                    'apellido': c['apellido'],
+                    'nombres': c['nombres'],
+                    'nombre': f"{c['apellido']}, {c['nombres']}",
+                    'fechaNacimiento': str(c['fecha_nacimiento']) if c['fecha_nacimiento'] else None,
+                    'condicionIVA': c['condicion_iva'],
+                    'categoriaMonotriibuto': c['categoria_monotributo']
                 }
                 clientes_list.append(cliente_dict)
-            
-            conn.close()
-            return jsonify({
-                'clientes': clientes_list
-            })
+            return jsonify({'clientes': clientes_list})
         else:
-            conn.close()
             return jsonify({
-                'clientes': [],  # Array vacío cuando no se encuentra
+                'clientes': [],
                 'mensaje': 'Cliente no encontrado'
             })
     
@@ -471,13 +443,15 @@ def buscar_cliente():
         }), 500
 
 @app.route('/wsmtxca')
+@login_required
+@role_required('admin', 'contador')
 def wsmtxca():
     """Página de consulta WSMTXCA"""
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
     return render_template('consulta_wsmtxca.html')
 
 @app.route('/consultar-wsmtxca')
+@login_required
+@role_required('admin', 'contador')
 def consultar_wsmtxca():
     """
     Endpoint para consultar comprobantes WSMTXCA (Factura Electrónica con Códigos MTX)
@@ -488,13 +462,10 @@ def consultar_wsmtxca():
     - punto_venta: Punto de venta (requerido)
     - numero: Número del comprobante (requerido)
     """
-    if 'usuario' not in session:
-        return jsonify({'success': False, 'error': 'No autenticado'}), 401
-    
     # Validar parámetros
     cuit = request.args.get('cuit')
     tipo = request.args.get('tipo')
-    punto_venta = request.args.get('punto_venta') 
+    punto_venta = request.args.get('punto_venta')
     numero = request.args.get('numero')
     
     if not all([cuit, tipo, punto_venta, numero]):
@@ -611,28 +582,24 @@ def consultar_wsmtxca():
 # ============= RUTAS WSFEv1 (FACTURAS TRADICIONALES) =============
 
 @app.route('/wsfev1')
+@login_required
+@role_required('admin', 'contador')
 def wsfev1():
     """Página de consulta WSFEv1 (Facturas tradicionales desde 2013)"""
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
-    
-    # Obtener cliente seleccionado desde la sesión (como WSMTXCA)
     cliente = session.get('cliente_seleccionado')
-    
     return render_template('consulta_wsfev1.html', cliente=cliente)
 
 @app.route('/buscar-facturas-wsfev1')
+@login_required
+@role_required('admin', 'contador')
 def buscar_facturas_wsfev1():
     """
     Endpoint para buscar todas las facturas WSFEv1 de una empresa
-    
+
     Parámetros:
     - cuit: CUIT de la empresa (requerido)
     - limite: Límite de facturas por tipo (default: 50)
     """
-    if 'usuario' not in session:
-        return jsonify({'success': False, 'error': 'No autenticado'}), 401
-    
     cuit = request.args.get('cuit')
     limite = int(request.args.get('limite', 50))
     
@@ -643,30 +610,26 @@ def buscar_facturas_wsfev1():
         }), 400
     
     try:
-        print(f"🔍 Iniciando búsqueda WSFEv1 para CUIT: {cuit}")
-        
-        # Importar el cliente WSFEv1
+        print(f"[WSFEv1] solicitante={Config.AFIP_SOLICITANTE_CUIT}  cliente={cuit}")
+
         import sys
         from pathlib import Path
-        
+
         root_dir = Path(__file__).parent.parent
         if str(root_dir) not in sys.path:
             sys.path.insert(0, str(root_dir))
-        
+
         from wsfev1_client import WSFEv1Client
-        
-        # Configurar rutas de certificados
+
         cert_path = root_dir / 'certs' / 'certificado.crt'
         key_path = root_dir / 'certs' / 'clave_privada.key'
-        
-        # Crear cliente WSFEv1
+
         client = WSFEv1Client(
             cert_path=str(cert_path),
             key_path=str(key_path),
-            ambiente='prod'  # Siempre usar producción
+            ambiente='prod'
         )
-        
-        # Buscar comprobantes
+
         facturas = client.buscar_comprobantes_rango(
             cuit=cuit,
             tipos_comprobante=[1, 6, 11, 51, 2, 3, 7, 8, 12, 13],  # Tipos más comunes
@@ -719,6 +682,8 @@ def buscar_facturas_wsfev1():
         }), 500
 
 @app.route('/consultar-wsfev1')
+@login_required
+@role_required('admin', 'contador')
 def consultar_wsfev1():
     """
     Endpoint para consultar una factura específica WSFEv1
@@ -729,9 +694,6 @@ def consultar_wsfev1():
     - punto_venta: Punto de venta (requerido)  
     - numero: Número del comprobante (requerido)
     """
-    if 'usuario' not in session:
-        return jsonify({'success': False, 'error': 'No autenticado'}), 401
-    
     cuit = request.args.get('cuit')
     tipo = request.args.get('tipo')
     punto_venta = request.args.get('punto_venta')
@@ -745,28 +707,26 @@ def consultar_wsfev1():
         }), 400
     
     try:
-        # Importar el cliente WSFEv1
+        print(f"[WSFEv1] solicitante={Config.AFIP_SOLICITANTE_CUIT}  cliente={cuit}  tipo={tipo}  pv={punto_venta}  nro={numero}")
+
         import sys
         from pathlib import Path
-        
+
         root_dir = Path(__file__).parent.parent
         if str(root_dir) not in sys.path:
             sys.path.insert(0, str(root_dir))
-        
+
         from wsfev1_client import WSFEv1Client
-        
-        # Configurar rutas de certificados
+
         cert_path = root_dir / 'certs' / 'certificado.crt'
         key_path = root_dir / 'certs' / 'clave_privada.key'
-        
-        # Crear cliente WSFEv1
+
         client = WSFEv1Client(
             cert_path=str(cert_path),
             key_path=str(key_path),
             ambiente='prod'
         )
-        
-        # Consultar comprobante específico
+
         resultado = client.consultar_comprobante(
             cuit=cuit,
             tipo_comprobante=int(tipo),
@@ -789,9 +749,9 @@ def consultar_wsfev1():
 
 # Endpoint para guardar cliente seleccionado en sesión
 @app.route('/set-cliente-seleccionado', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
 def set_cliente_seleccionado():
-    if 'usuario' not in session:
-        return jsonify({'error': 'No autorizado'}), 401
     data = request.get_json()
     if not data:
         return '', 400
@@ -800,9 +760,9 @@ def set_cliente_seleccionado():
 
 # Ruta para mostrar datos del cliente seleccionado en consultafacturacliente
 @app.route('/consultafacturacliente')
+@login_required
+@role_required('admin', 'contador')
 def consulta_factura_cliente():
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
     cliente = session.get('cliente_seleccionado')
     if not cliente:
         return redirect(url_for('home'))
@@ -810,9 +770,9 @@ def consulta_factura_cliente():
 
 # Ruta para nuevo cliente
 @app.route('/nuevo-cliente', methods=['GET', 'POST'])
+@login_required
+@role_required('admin', 'contador')
 def nuevo_cliente():
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
     mensaje = None
     error = None
     
@@ -897,154 +857,590 @@ def nuevo_cliente():
             error = 'Se encontraron los siguientes errores:\n• ' + '\n• '.join(errores)
         else:
             try:
-                # Verificar si ya existe el número de documento
-                db_path = Path(__file__).parent.parent / 'infofiscal.db'
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute('SELECT id FROM clientes WHERE nroDocumento = ? AND tipoDocumento = ?', 
-                             (nroDocumento, tipoDocumento))
-                if cursor.fetchone():
-                    error = f'Ya existe un cliente con {tipoDocumento} {nroDocumento}'
-                else:
-                    # Formatear CUIT si existe
-                    if CUIT:
-                        cuit_clean = CUIT.replace('-', '').replace(' ', '')
-                        CUIT = f"{cuit_clean[:2]}-{cuit_clean[2:10]}-{cuit_clean[10]}"
-                    
-                    # Capitalizar nombres
-                    apellido = apellido.title()
-                    nombres = nombres.title()
-                    
-                    # Insertar cliente
-                    cursor.execute('''
-                        INSERT INTO clientes (tipoDocumento, nroDocumento, CUIT, apellido, nombres, 
-                                            fechaNacimiento, condicionIVA, categoriaMonotriibuto)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (tipoDocumento, nroDocumento, CUIT, apellido, nombres, 
-                         fechaNacimiento, condicionIVA, categoriaMonotriibuto))
-                    
-                    conn.commit()
-                    mensaje = f'Cliente {apellido}, {nombres} creado exitosamente con {tipoDocumento} {nroDocumento}'
-                
+                estudio_id = g.user['estudio_id']
+                with get_cursor() as cur:
+                    cur.execute(
+                        'SELECT id FROM clientes WHERE estudio_id = %s AND nro_documento = %s AND tipo_documento = %s',
+                        (estudio_id, nroDocumento, tipoDocumento)
+                    )
+                    if cur.fetchone():
+                        error = f'Ya existe un cliente con {tipoDocumento} {nroDocumento}'
+                    else:
+                        # Formatear CUIT si existe
+                        if CUIT:
+                            cuit_clean = CUIT.replace('-', '').replace(' ', '')
+                            CUIT = f"{cuit_clean[:2]}-{cuit_clean[2:10]}-{cuit_clean[10]}"
+
+                        # Capitalizar nombres
+                        apellido = apellido.title()
+                        nombres = nombres.title()
+
+                        cur.execute("""
+                            INSERT INTO clientes (estudio_id, tipo_documento, nro_documento, cuit,
+                                                  apellido, nombres, fecha_nacimiento,
+                                                  condicion_iva, categoria_monotributo)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (estudio_id, tipoDocumento, nroDocumento, CUIT or None,
+                              apellido, nombres, fechaNacimiento or None,
+                              condicionIVA or None, categoriaMonotriibuto or None))
+
+                        mensaje = f'Cliente {apellido}, {nombres} creado exitosamente con {tipoDocumento} {nroDocumento}'
+
             except Exception as e:
                 error = f'Error al crear cliente: {str(e)}'
     
-    return render_template('nuevo_cliente.html', usuario=session['usuario'], 
+    return render_template('nuevo_cliente.html', usuario=g.user['nombre'],
                          mensaje=mensaje, error=error)
 
 # Ruta para consultar cliente por CUIT o DNI (AJAX)
 @app.route('/consultar-cliente', methods=['GET'])
+@login_required
+@role_required('admin', 'contador')
 def consultar_cliente():
-    if 'usuario' not in session:
-        return jsonify({'error': 'No autorizado'}), 401
     busqueda = request.args.get('busqueda', '').strip()
     if not busqueda:
         return jsonify({'error': 'Debe ingresar CUIT o DNI'}), 400
-    db_path = Path(__file__).parent.parent / 'infofiscal.db'
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''SELECT tipoDocumento, nroDocumento, CUIT, apellido, nombres, fechaNacimiento, condicionIVA, categoriaMonotriibuto FROM clientes WHERE CUIT = ? OR nroDocumento = ?''', (busqueda, busqueda))
-    row = cursor.fetchone()
+
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT tipo_documento, nro_documento, cuit, apellido, nombres,
+                   fecha_nacimiento, condicion_iva, categoria_monotributo
+            FROM clientes
+            WHERE estudio_id = %s AND (cuit = %s OR nro_documento = %s)
+        """, (estudio_id, busqueda, busqueda))
+        row = cur.fetchone()
+
     if row:
-        tipoDocumento, nroDocumento, CUIT, apellido, nombres, fechaNacimiento, condicionIVA, categoriaMonotriibuto = row
         return jsonify({
-            'tipoDocumento': tipoDocumento,
-            'nroDocumento': nroDocumento,
-            'CUIT': CUIT,
-            'apellido': apellido,
-            'nombres': nombres,
-            'fechaNacimiento': fechaNacimiento,
-            'condicionIVA': condicionIVA,
-            'categoriaMonotriibuto': categoriaMonotriibuto
+            'tipoDocumento': row['tipo_documento'],
+            'nroDocumento': row['nro_documento'],
+            'CUIT': row['cuit'],
+            'apellido': row['apellido'],
+            'nombres': row['nombres'],
+            'fechaNacimiento': str(row['fecha_nacimiento']) if row['fecha_nacimiento'] else None,
+            'condicionIVA': row['condicion_iva'],
+            'categoriaMonotriibuto': row['categoria_monotributo']
         })
     else:
         return jsonify({'error': 'Cliente no encontrado'}), 404
 
-# Ruta para cerrar sesión
+# Ruta raiz redirige al login nuevo
+@app.route('/')
+def index():
+    return redirect(url_for('auth.login_page'))
+
+# Logout legacy redirige al logout nuevo
 @app.route('/logout')
 def logout():
-    session.pop('usuario', None)
-    return redirect(url_for('login'))
-
-
-# Ruta de login
-@app.route('/', methods=['GET', 'POST'])
-def login():
-    error = None
-    if request.method == 'POST':
-        usuario = request.form['usuario']
-        contrasena = request.form['contrasena']
-        db_path = Path(__file__).parent.parent / 'infofiscal.db'
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT contrasena, bloqueado, cantidadDeIntentos FROM usuario WHERE usuario = ?', (usuario,))
-        row = cursor.fetchone()
-        if row:
-            hashed, bloqueado, intentos = row
-            if bloqueado:
-                error = 'Usuario bloqueado.'
-            elif get_bcrypt().checkpw(contrasena.encode('utf-8'), hashed):
-                # Login exitoso: resetear intentos
-                cursor.execute('UPDATE usuario SET cantidadDeIntentos = 0, fechaUltimoLogin = datetime("now") WHERE usuario = ?', (usuario,))
-                conn.commit()
-                session['usuario'] = usuario
-                return redirect(url_for('home'))
-            else:
-                intentos = (intentos or 0) + 1
-                if intentos >= 5:
-                    cursor.execute('UPDATE usuario SET cantidadDeIntentos = ?, bloqueado = 1 WHERE usuario = ?', (intentos, usuario))
-                    error = 'Usuario bloqueado por demasiados intentos fallidos.'
-                else:
-                    cursor.execute('UPDATE usuario SET cantidadDeIntentos = ? WHERE usuario = ?', (intentos, usuario))
-                    error = f'Contraseña incorrecta. Intento {intentos} de 5.'
-                conn.commit()
-        else:
-            error = 'Usuario no encontrado.'
-    return render_template('login.html', error=error)
+    return redirect(url_for('auth.logout'))
 
 
 # Ruta principal protegida
 
-@app.route('/home', methods=['GET', 'POST'])
+@app.route('/home', methods=['GET'])
+@login_required
 def home():
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
-    usuario = session['usuario']
-    desbloqueado = None
-    usuarios_bloqueados = []
-    if usuario == 'admin':
-        db_path = Path(__file__).parent.parent / 'infofiscal.db'
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        if request.method == 'POST':
-            user_to_unlock = request.form.get('user_to_unlock')
-            if user_to_unlock:
-                cursor.execute('UPDATE usuario SET bloqueado = 0, cantidadDeIntentos = 0 WHERE usuario = ?', (user_to_unlock,))
-                conn.commit()
-                desbloqueado = user_to_unlock
-        cursor.execute('SELECT usuario FROM usuario WHERE bloqueado = 1')
-        usuarios_bloqueados = [row[0] for row in cursor.fetchall()]
-    return render_template('home.html', usuario=usuario, usuarios_bloqueados=usuarios_bloqueados, desbloqueado=desbloqueado)
+    # Superadmin va directo al dashboard de administración
+    if g.user['rol'] == 'superadmin':
+        return redirect(url_for('superadmin_dashboard'))
+    return render_template('home.html',
+                         usuario=g.user['nombre'],
+                         rol=g.user['rol'],
+                         usuarios_bloqueados=[],
+                         desbloqueado=None)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFIG AFIP — certificados y credenciales por estudio (solo admin)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/config/afip', methods=['GET'])
+@login_required
+@role_required('admin', 'contador', 'superadmin')
+def config_afip():
+    """Ver configuraciones AFIP del estudio del usuario logueado."""
+    estudio_id = g.user['estudio_id']
+    if estudio_id is None:
+        flash('Superadmin no tiene estudio asignado.', 'error')
+        return redirect(url_for('home'))
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM estudios_afip
+            WHERE estudio_id = %s
+            ORDER BY activo DESC, id DESC
+        """, (estudio_id,))
+        configs = cur.fetchall()
+
+    return render_template('config_afip.html', configs=configs)
+
+
+@app.route('/config/afip/upload', methods=['POST'])
+@login_required
+@role_required('admin', 'contador', 'superadmin')
+def config_afip_upload():
+    """Subir certificado y clave AFIP."""
+    from src.afip_credentials import encrypt_portal_password
+
+    estudio_id = g.user['estudio_id']
+    if estudio_id is None:
+        flash('Superadmin no tiene estudio asignado.', 'error')
+        return redirect(url_for('home'))
+
+    solicitante_cuit = request.form.get('solicitante_cuit', '').strip()
+    ambiente = request.form.get('ambiente', 'prod')
+    portal_cuit = request.form.get('portal_cuit', '').strip() or None
+    portal_password = request.form.get('portal_password', '').strip()
+
+    cert_file = request.files.get('cert_file')
+    key_file = request.files.get('key_file')
+
+    if not solicitante_cuit:
+        flash('El CUIT solicitante es obligatorio.', 'error')
+        return redirect(url_for('config_afip'))
+
+    if not cert_file or not cert_file.filename:
+        flash('Debe seleccionar el archivo de certificado.', 'error')
+        return redirect(url_for('config_afip'))
+
+    if not key_file or not key_file.filename:
+        flash('Debe seleccionar el archivo de clave privada.', 'error')
+        return redirect(url_for('config_afip'))
+
+    # Leer archivos como bytes
+    cert_blob = cert_file.read()
+    key_blob = key_file.read()
+
+    # Validacion basica: verificar que parecen certificados
+    cert_text = cert_blob.decode('utf-8', errors='ignore')
+    if 'CERTIFICATE' not in cert_text and 'BEGIN' not in cert_text:
+        flash('El archivo de certificado no parece valido.', 'error')
+        return redirect(url_for('config_afip'))
+
+    key_text = key_blob.decode('utf-8', errors='ignore')
+    if 'KEY' not in key_text and 'BEGIN' not in key_text:
+        flash('El archivo de clave privada no parece valido.', 'error')
+        return redirect(url_for('config_afip'))
+
+    # Encriptar password del portal si se proporcionó
+    portal_password_enc = None
+    if portal_password:
+        portal_password_enc = encrypt_portal_password(portal_password)
+
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO estudios_afip
+                    (estudio_id, solicitante_cuit, cert_blob, key_blob,
+                     ambiente, portal_cuit, portal_password_enc, activo)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE)
+            """, (estudio_id, solicitante_cuit, cert_blob, key_blob,
+                  ambiente, portal_cuit, portal_password_enc))
+
+        flash('Configuracion AFIP guardada correctamente.', 'success')
+    except Exception as e:
+        flash(f'Error al guardar: {e}', 'error')
+
+    return redirect(url_for('config_afip'))
+
+
+@app.route('/config/afip/<int:config_id>/toggle', methods=['POST'])
+@login_required
+@role_required('admin', 'contador', 'superadmin')
+def config_afip_toggle(config_id):
+    """Activar/desactivar una configuracion AFIP."""
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT activo FROM estudios_afip WHERE id = %s AND estudio_id = %s",
+            (config_id, estudio_id))
+        cfg = cur.fetchone()
+        if not cfg:
+            flash('Configuracion no encontrada.', 'error')
+            return redirect(url_for('config_afip'))
+
+        cur.execute(
+            "UPDATE estudios_afip SET activo = %s WHERE id = %s AND estudio_id = %s",
+            (not cfg['activo'], config_id, estudio_id))
+
+    flash('Estado actualizado.', 'success')
+    return redirect(url_for('config_afip'))
+
+
+@app.route('/config/afip/<int:config_id>/delete', methods=['POST'])
+@login_required
+@role_required('admin', 'contador', 'superadmin')
+def config_afip_delete(config_id):
+    """Eliminar una configuracion AFIP."""
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute(
+            "DELETE FROM estudios_afip WHERE id = %s AND estudio_id = %s",
+            (config_id, estudio_id))
+        if cur.rowcount == 0:
+            flash('Configuracion no encontrada.', 'error')
+        else:
+            flash('Configuracion eliminada.', 'success')
+
+    return redirect(url_for('config_afip'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SUPERADMIN — gestión de estudios y membresías
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/admin', methods=['GET'])
+@app.route('/admin/dashboard', methods=['GET'])
+@login_required
+@role_required('superadmin')
+def superadmin_dashboard():
+    """Dashboard con KPIs generales del sistema."""
+    from datetime import date, timedelta
+    hoy = date.today()
+    limite_vencimiento = hoy + timedelta(days=15)
+
+    with get_cursor() as cur:
+        # KPIs
+        cur.execute("SELECT COUNT(*) AS total FROM estudios")
+        total = cur.fetchone()['total']
+
+        cur.execute("SELECT COUNT(*) AS c FROM estudios WHERE activo = TRUE")
+        activos = cur.fetchone()['c']
+
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM estudios
+            WHERE membresia_hasta IS NOT NULL AND membresia_hasta < %s
+        """, (hoy,))
+        vencidos = cur.fetchone()['c']
+
+        cur.execute("SELECT COUNT(*) AS c FROM usuarios WHERE activo = TRUE AND rol != 'superadmin'")
+        total_usuarios = cur.fetchone()['c']
+
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM consultas_log
+            WHERE created_at >= DATE_TRUNC('month', NOW())
+        """)
+        consultas_mes = cur.fetchone()['c']
+
+        # Distribucion por plan
+        cur.execute("""
+            SELECT COALESCE(plan, 'trial') AS plan, COUNT(*) AS cantidad
+            FROM estudios GROUP BY plan ORDER BY cantidad DESC
+        """)
+        planes = cur.fetchall()
+
+        # Ultimos 5 estudios
+        cur.execute("SELECT * FROM estudios ORDER BY created_at DESC LIMIT 5")
+        recientes = cur.fetchall()
+
+        # Membresias por vencer en 15 dias (o ya vencidas)
+        cur.execute("""
+            SELECT * FROM estudios
+            WHERE membresia_hasta IS NOT NULL
+              AND membresia_hasta <= %s
+              AND activo = TRUE
+            ORDER BY membresia_hasta ASC
+        """, (limite_vencimiento,))
+        por_vencer = cur.fetchall()
+
+    kpis = {
+        'total': total,
+        'activos': activos,
+        'vencidos': vencidos,
+        'total_usuarios': total_usuarios,
+        'consultas_mes': consultas_mes,
+    }
+
+    return render_template('superadmin_dashboard.html',
+                         kpis=kpis,
+                         planes=planes,
+                         recientes=recientes,
+                         por_vencer=por_vencer,
+                         hoy=hoy,
+                         active_page='dashboard')
+
+
+@app.route('/admin/estudios', methods=['GET'])
+@login_required
+@role_required('superadmin')
+def superadmin_panel():
+    """Panel principal: listar todos los estudios con estado de membresía."""
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT e.*,
+                   COUNT(DISTINCT u.id) AS total_usuarios,
+                   COUNT(DISTINCT c.id) AS total_clientes,
+                   (SELECT COUNT(*) FROM consultas_log cl
+                    WHERE cl.estudio_id = e.id
+                      AND cl.created_at >= DATE_TRUNC('month', NOW())) AS consultas_este_mes
+            FROM estudios e
+            LEFT JOIN usuarios u ON u.estudio_id = e.id AND u.activo = TRUE
+            LEFT JOIN clientes c ON c.estudio_id = e.id
+            GROUP BY e.id
+            ORDER BY e.created_at DESC
+        """)
+        estudios = cur.fetchall()
+
+    from datetime import date
+    hoy = date.today()
+
+    return render_template('superadmin_estudios.html',
+                         estudios=estudios,
+                         hoy=hoy,
+                         active_page='estudios')
+
+
+@app.route('/admin/estudios/<int:estudio_id>/toggle', methods=['POST'])
+@login_required
+@role_required('superadmin')
+def superadmin_toggle_estudio(estudio_id):
+    """Activar/desactivar un estudio (membresía)."""
+    with get_cursor() as cur:
+        cur.execute("SELECT activo FROM estudios WHERE id = %s", (estudio_id,))
+        estudio = cur.fetchone()
+        if not estudio:
+            flash('Estudio no encontrado', 'error')
+            return redirect(url_for('superadmin_panel'))
+
+        nuevo_estado = not estudio['activo']
+        cur.execute("""
+            UPDATE estudios SET activo = %s, updated_at = NOW() WHERE id = %s
+        """, (nuevo_estado, estudio_id))
+
+    estado_txt = 'activado' if nuevo_estado else 'desactivado'
+    flash(f'Estudio {estado_txt} correctamente', 'success')
+    return redirect(url_for('superadmin_panel'))
+
+
+@app.route('/admin/estudios/<int:estudio_id>/plan', methods=['POST'])
+@login_required
+@role_required('superadmin')
+def superadmin_update_plan(estudio_id):
+    """Actualizar plan y vencimiento de membresía."""
+    plan = request.form.get('plan')
+    membresia_hasta = request.form.get('membresia_hasta')
+    max_clientes = request.form.get('max_clientes', type=int)
+    max_usuarios = request.form.get('max_usuarios', type=int)
+    max_consultas = request.form.get('max_consultas_mes', type=int)
+    notas = request.form.get('notas_admin', '')
+
+    with get_cursor() as cur:
+        cur.execute("""
+            UPDATE estudios
+            SET plan = %s,
+                membresia_hasta = %s,
+                max_clientes = COALESCE(%s, max_clientes),
+                max_usuarios = COALESCE(%s, max_usuarios),
+                max_consultas_mes = COALESCE(%s, max_consultas_mes),
+                notas_admin = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (plan, membresia_hasta or None, max_clientes, max_usuarios,
+              max_consultas, notas, estudio_id))
+
+    flash('Plan actualizado', 'success')
+    return redirect(url_for('superadmin_detalle_estudio', estudio_id=estudio_id))
+
+
+@app.route('/admin/estudios/nuevo', methods=['GET', 'POST'])
+@login_required
+@role_required('superadmin')
+def superadmin_crear_estudio():
+    """Formulario para crear un estudio nuevo con su usuario admin."""
+    if request.method == 'GET':
+        return render_template('superadmin_crear_estudio.html',
+                             active_page='crear_estudio')
+
+    # POST — crear estudio + usuario admin
+    from src.auth.service import hash_password
+
+    nombre = request.form.get('nombre', '').strip()
+    email = request.form.get('email', '').strip()
+    cuit = request.form.get('cuit', '').strip() or None
+    telefono = request.form.get('telefono', '').strip() or None
+    domicilio = request.form.get('domicilio', '').strip() or None
+    plan = request.form.get('plan', 'trial')
+    membresia_hasta = request.form.get('membresia_hasta') or None
+    max_clientes = request.form.get('max_clientes', 10, type=int)
+    max_usuarios = request.form.get('max_usuarios', 2, type=int)
+    max_consultas = request.form.get('max_consultas_mes', 100, type=int)
+    notas = request.form.get('notas_admin', '').strip()
+
+    admin_nombre = request.form.get('admin_nombre', '').strip()
+    admin_email = request.form.get('admin_email', '').strip()
+    admin_password = request.form.get('admin_password', '')
+
+    if not nombre or not email or not admin_nombre or not admin_email or not admin_password:
+        flash('Todos los campos obligatorios deben completarse.', 'error')
+        return redirect(url_for('superadmin_crear_estudio'))
+
+    if len(admin_password) < 8:
+        flash('La contrasena debe tener al menos 8 caracteres.', 'error')
+        return redirect(url_for('superadmin_crear_estudio'))
+
+    try:
+        with get_cursor() as cur:
+            # Verificar email de estudio duplicado
+            cur.execute("SELECT id FROM estudios WHERE email = %s", (email,))
+            if cur.fetchone():
+                flash('Ya existe un estudio con ese email.', 'error')
+                return redirect(url_for('superadmin_crear_estudio'))
+
+            # Verificar email de usuario duplicado
+            cur.execute("SELECT id FROM usuarios WHERE email = %s", (admin_email,))
+            if cur.fetchone():
+                flash('Ya existe un usuario con ese email.', 'error')
+                return redirect(url_for('superadmin_crear_estudio'))
+
+            # Crear estudio
+            cur.execute("""
+                INSERT INTO estudios (nombre, email, cuit, telefono, domicilio,
+                                     plan, membresia_hasta, max_clientes,
+                                     max_usuarios, max_consultas_mes, notas_admin)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (nombre, email, cuit, telefono, domicilio, plan,
+                  membresia_hasta, max_clientes, max_usuarios, max_consultas, notas))
+            estudio_id = cur.fetchone()['id']
+
+            # Crear usuario admin del estudio
+            password_hash = hash_password(admin_password)
+            cur.execute("""
+                INSERT INTO usuarios (estudio_id, nombre, email, password_hash, rol)
+                VALUES (%s, %s, %s, %s, 'admin')
+            """, (estudio_id, admin_nombre, admin_email, password_hash))
+
+        flash(f'Estudio "{nombre}" creado correctamente con usuario admin.', 'success')
+        return redirect(url_for('superadmin_detalle_estudio', estudio_id=estudio_id))
+
+    except Exception as e:
+        flash(f'Error al crear estudio: {e}', 'error')
+        return redirect(url_for('superadmin_crear_estudio'))
+
+
+@app.route('/admin/health', methods=['GET'])
+@login_required
+@role_required('superadmin')
+def superadmin_health():
+    """Estado de servicios AFIP y sesiones del sistema."""
+    estado_afip = _afip_health_check()
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM sesiones
+            WHERE revocada = FALSE AND expires_at > NOW()
+        """)
+        sesiones_activas = cur.fetchone()['c']
+
+        cur.execute("""
+            SELECT COUNT(*) AS c FROM sesiones
+            WHERE revocada = TRUE OR expires_at <= NOW()
+        """)
+        sesiones_expiradas = cur.fetchone()['c']
+
+    return render_template('superadmin_health.html',
+                         estado_afip=estado_afip,
+                         sesiones_activas=sesiones_activas,
+                         sesiones_expiradas=sesiones_expiradas,
+                         active_page='health')
+
+
+@app.route('/admin/cleanup-sessions', methods=['POST'])
+@login_required
+@role_required('superadmin')
+def superadmin_cleanup_sessions():
+    """Limpiar sesiones expiradas/revocadas."""
+    from src.auth.service import cleanup_expired_sessions
+    eliminadas = cleanup_expired_sessions()
+    flash(f'{eliminadas} sesiones eliminadas.', 'success')
+    return redirect(url_for('superadmin_health'))
+
+
+@app.route('/admin/estudios/<int:estudio_id>', methods=['GET'])
+@login_required
+@role_required('superadmin')
+def superadmin_detalle_estudio(estudio_id):
+    """Detalle de un estudio: usuarios, clientes, config AFIP, logs."""
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM estudios WHERE id = %s", (estudio_id,))
+        estudio = cur.fetchone()
+        if not estudio:
+            flash('Estudio no encontrado', 'error')
+            return redirect(url_for('superadmin_panel'))
+
+        cur.execute("""
+            SELECT id, nombre, email, rol, activo, ultimo_login, created_at
+            FROM usuarios WHERE estudio_id = %s ORDER BY created_at
+        """, (estudio_id,))
+        usuarios = cur.fetchall()
+
+        cur.execute("SELECT COUNT(*) AS total FROM clientes WHERE estudio_id = %s", (estudio_id,))
+        total_clientes = cur.fetchone()['total']
+
+        cur.execute("""
+            SELECT * FROM estudios_afip
+            WHERE estudio_id = %s ORDER BY activo DESC, id DESC
+        """, (estudio_id,))
+        configs_afip = cur.fetchall()
+
+        cur.execute("""
+            SELECT servicio, COUNT(*) AS total, SUM(cantidad) AS comprobantes,
+                   MAX(created_at) AS ultima
+            FROM consultas_log
+            WHERE estudio_id = %s AND created_at >= DATE_TRUNC('month', NOW())
+            GROUP BY servicio
+        """, (estudio_id,))
+        uso_mes = cur.fetchall()
+
+    return render_template('superadmin_detalle_estudio.html',
+                         estudio=estudio,
+                         usuarios=usuarios,
+                         total_clientes=total_clientes,
+                         configs_afip=configs_afip,
+                         uso_mes=uso_mes,
+                         active_page='estudios')
+
+
+# ============= HEALTH CHECK AFIP =============
+
+_AFIP_ENDPOINTS = {
+    'WSFEv1':  'https://servicios1.afip.gov.ar/wsfev1/service.asmx?WSDL',
+    'WSMTXCA': 'https://serviciosjava.afip.gov.ar/wsmtxca/services/MTXCAService?wsdl',
+    'WSFEXv1': 'https://servicios1.afip.gov.ar/wsfexv1/service.asmx?WSDL',
+}
+
+def _afip_health_check(timeout=4):
+    """Ping rapido a los WSDL de AFIP. Retorna dict {servicio: bool}."""
+    s = crear_session_afip()
+    estado = {}
+    for nombre, url in _AFIP_ENDPOINTS.items():
+        try:
+            r = s.get(url, timeout=timeout)
+            estado[nombre] = r.status_code == 200
+        except Exception:
+            estado[nombre] = False
+    s.close()
+    return estado
 
 
 # ============= RUTA UNIFICADA DE CONSULTA =============
 
 @app.route('/consulta_facturas_unificada')
+@login_required
+@role_required('admin', 'contador')
 def consulta_facturas_unificada():
-    """P�gina de consulta unificada de facturas"""
-    if 'usuario' not in session:
-        return redirect(url_for('login'))
+    """Pagina de consulta unificada de facturas"""
     return render_template('consulta_unificada.html')
 
 @app.route('/consultar-facturas-unificada', methods=['GET', 'POST'])
+@login_required
+@role_required('admin', 'contador')
 def consultar_facturas_unificada():
     """
-    Endpoint unificado que determina autom�ticamente qu� web service usar
-    seg�n el tipo de cliente y ejecuta la consulta apropiada
+    Endpoint unificado que determina automaticamente que web service usar
+    segun el tipo de cliente y ejecuta la consulta apropiada
     """
-    if 'usuario' not in session:
-        return jsonify({'error': 'No autorizado'}), 401
     
     # Si es GET, mostrar página de consulta para el cliente seleccionado
     if request.method == 'GET':
@@ -1054,78 +1450,316 @@ def consultar_facturas_unificada():
             return redirect(url_for('consulta_facturas_unificada'))
         
         try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute('SELECT * FROM clientes WHERE id = ?', (cliente_id,))
-            cliente = cursor.fetchone()
-            conn.close()
-            
+            estudio_id = g.user['estudio_id']
+            with get_cursor() as cur:
+                cur.execute('SELECT * FROM clientes WHERE estudio_id = %s AND id = %s',
+                            (estudio_id, cliente_id))
+                cliente = cur.fetchone()
+
             if not cliente:
                 flash('Cliente no encontrado', 'error')
                 return redirect(url_for('consulta_facturas_unificada'))
-            
-            # Convertir tupla a diccionario
-            # Estructura: id, tipoDocumento, nroDocumento, CUIT, apellido, nombres, fechaNacimiento, condicionIVA, categoriaMonotriibuto
+
             cliente_dict = {
-                'id': cliente[0],
-                'cuit': cliente[3],  # CUIT está en posición 3
-                'razon_social': f"{cliente[4]}, {cliente[5]}",  # apellido, nombres
-                'condicion_iva': cliente[7] if len(cliente) > 7 else 'No especificado',  # condicionIVA
-                'domicilio': '',  # No hay domicilio en esta tabla
-                'tipo_documento': cliente[1],
-                'nro_documento': cliente[2]
+                'id': cliente['id'],
+                'cuit': cliente['cuit'],
+                'razon_social': f"{cliente['apellido']}, {cliente['nombres']}",
+                'condicion_iva': cliente['condicion_iva'] or 'No especificado',
+                'domicilio': '',
+                'tipo_documento': cliente['tipo_documento'],
+                'nro_documento': cliente['nro_documento']
             }
             
-            # EJECUTAR CONSULTA REAL DE FACTURAS  
+            # EJECUTAR CONSULTA REAL DE FACTURAS
+            # cuit_cliente = CUIT del emisor consultado (sale de la DB)
+            # solicitante  = CUIT del estudio que posee el certificado (sale de Config)
             cuit = cliente_dict['cuit']
-            print(f"DEBUG UNIFICADO: Iniciando consulta para cliente {cliente_dict['razon_social']} - CUIT: {cuit}")
-            
-            # Intentar TRES web services automáticamente usando las funciones adaptadas
-            print("Consultando WSFEv1...")
-            resultados_wsfev1 = consultar_wsfev1_interno(cuit)
+            fecha_desde = request.args.get('fecha_desde', '')  # formato YYYY-MM-DD
+            fecha_hasta = request.args.get('fecha_hasta', '')
+            # Convertir a YYYYMMDD que usa AFIP, validar formato
+            fecha_desde_afip = fecha_desde.replace('-', '') if fecha_desde else None
+            fecha_hasta_afip = fecha_hasta.replace('-', '') if fecha_hasta else None
+            # Validar que las fechas tengan 8 dígitos y empiecen con 19xx o 20xx
+            for f in [fecha_desde_afip, fecha_hasta_afip]:
+                if f and (len(f) != 8 or not f.isdigit() or f[:2] not in ('19', '20')):
+                    flash(f'Fecha invalida: {f}. Use formato DD/MM/AAAA con año completo.', 'error')
+                    return redirect(url_for('consulta_facturas_unificada'))
+            print(f"[UNIFICADO] solicitante={Config.AFIP_SOLICITANTE_CUIT}  cliente={cuit}  razon_social={cliente_dict['razon_social']}  fecha_desde={fecha_desde_afip}  fecha_hasta={fecha_hasta_afip}")
 
-            print("Consultando WSMTXCA...")
-            resultados_wsmtxca = consultar_wsmtxca_interno(cuit)
+            # Pre-check: verificar que al menos un servicio AFIP responda
+            estado_afip = _afip_health_check(timeout=4)
+            print(f"[HEALTH CHECK] {estado_afip}")
 
-            print("Consultando WSFEXv1...")
-            resultados_wsfexv1 = consultar_wsfexv1_interno(cuit)
+            if not any(estado_afip.values()):
+                caidos = ', '.join(estado_afip.keys())
+                return render_template('resultado_facturas_unificada.html',
+                    cliente=cliente_dict,
+                    facturas=[],
+                    web_service='Ninguno',
+                    mensaje=f'Los servicios de AFIP no estan disponibles en este momento ({caidos}). Intente nuevamente mas tarde.',
+                    total_facturas=0,
+                    afip_caido=True)
 
-            # Determinar cuál tuvo éxito o más resultados
-            facturas_wsfev1 = resultados_wsfev1.get('facturas', [])
-            facturas_wsmtxca = resultados_wsmtxca.get('facturas', [])
-            facturas_wsfexv1 = resultados_wsfexv1.get('facturas', [])
+            # Mensaje informativo segun filtro de fechas
+            modo_consulta = ''
+            if fecha_desde_afip and fecha_hasta_afip:
+                modo_consulta = f'Rango: {fecha_desde_afip[:4]}-{fecha_desde_afip[4:6]}-{fecha_desde_afip[6:]} a {fecha_hasta_afip[:4]}-{fecha_hasta_afip[4:6]}-{fecha_hasta_afip[6:]}'
+            else:
+                modo_consulta = 'Sin fechas: se muestran los ultimos 50 comprobantes por tipo/PV'
 
-            total_wsfev1 = len(facturas_wsfev1)
-            total_wsmtxca = len(facturas_wsmtxca)
-            total_wsfexv1 = len(facturas_wsfexv1)
+            # WSFEv1 es el servicio principal — cubre todos los tipos (A,B,C,M)
+            # Cada servicio en su propio try/except para que uno no tire abajo a los demas
+            resultados_wsfev1 = {'facturas': []}
+            resultados_wsmtxca = {'facturas': []}
+            resultados_wsfexv1 = {'facturas': []}
+            errores_servicios = []
 
-            # Combinar todas las facturas
-            facturas_finales = facturas_wsfev1 + facturas_wsmtxca + facturas_wsfexv1
+            if estado_afip.get('WSFEv1'):
+                try:
+                    resultados_wsfev1 = consultar_wsfev1_interno(cuit, fecha_desde_afip, fecha_hasta_afip, estudio_id=g.user['estudio_id'])
+                except Exception as e:
+                    print(f"[UNIFICADO] WSFEv1 fallo: {e}", flush=True)
+                    errores_servicios.append(f"WSFEv1: {e}")
 
-            # Determinar mensaje según los resultados
-            servicios_con_datos = []
-            if total_wsfev1 > 0:
-                servicios_con_datos.append(f"WSFEv1 ({total_wsfev1})")
-            if total_wsmtxca > 0:
-                servicios_con_datos.append(f"WSMTXCA ({total_wsmtxca})")
-            if total_wsfexv1 > 0:
-                servicios_con_datos.append(f"WSFEXv1 ({total_wsfexv1})")
+            # WSMTXCA y WSFEXv1 solo si WSFEv1 falló completamente (error, no "0 resultados")
+            # WSFEv1 ya cubre Facturas A/B/C/M para mercado interno.
+            # WSMTXCA es lento (~30 llamadas SOAP) y redundante para monotributo.
+            # WSFEXv1 solo aplica a exportadores.
+            # Para PVs no-WS (Factura en Linea, Factuweb) el usuario tiene RCEL.
+            wsfev1_fallo = resultados_wsfev1.get('error') and not resultados_wsfev1.get('facturas')
+            if wsfev1_fallo:
+                print(f"[UNIFICADO] WSFEv1 fallo, intentando WSMTXCA/WSFEXv1...", flush=True)
+                if estado_afip.get('WSMTXCA'):
+                    try:
+                        resultados_wsmtxca = consultar_wsmtxca_interno(cuit, fecha_desde_afip, fecha_hasta_afip)
+                    except Exception as e:
+                        print(f"[UNIFICADO] WSMTXCA fallo: {e}", flush=True)
+                        errores_servicios.append(f"WSMTXCA: {e}")
 
-            if servicios_con_datos:
-                web_service_usado = " + ".join(servicios_con_datos)
-                mensaje = f"Se encontraron {len(facturas_finales)} facturas en total"
+                if estado_afip.get('WSFEXv1'):
+                    try:
+                        resultados_wsfexv1 = consultar_wsfexv1_interno(cuit, fecha_desde_afip, fecha_hasta_afip)
+                    except Exception as e:
+                        print(f"[UNIFICADO] WSFEXv1 fallo: {e}", flush=True)
+                        errores_servicios.append(f"WSFEXv1: {e}")
+            else:
+                print(f"[UNIFICADO] WSFEv1 OK, saltando WSMTXCA/WSFEXv1", flush=True)
+
+            # Combinar resultados WS
+            facturas_ws = (
+                resultados_wsfev1.get('facturas', []) +
+                resultados_wsmtxca.get('facturas', []) +
+                resultados_wsfexv1.get('facturas', [])
+            )
+            print(f"[UNIFICADO] WS: {len(facturas_ws)} comprobantes", flush=True)
+
+            # ── RCEL (portal web) — emitidos + recibidos ──
+            facturas_rcel = []
+            facturas_recibidas = []
+            from src.afip_credentials import get_afip_credentials
+            _creds = get_afip_credentials(g.user['estudio_id'])
+            portal_cuit = _creds['portal_cuit']
+            portal_pass = _creds['portal_password']
+            cuit_clean = str(cuit).replace('-', '').replace(' ', '')
+
+            if portal_cuit and portal_pass:
+                import sys as _sys
+                _root = Path(__file__).parent.parent
+                if str(_root) not in _sys.path:
+                    _sys.path.insert(0, str(_root))
+                from rcel_scraper import RCELScraper
+
+                # Fechas YYYYMMDD -> dd/mm/yyyy
+                rcel_desde = '01/01/2020'
+                rcel_hasta = None
+                if fecha_desde_afip and len(fecha_desde_afip) == 8:
+                    rcel_desde = f"{fecha_desde_afip[6:]}/{fecha_desde_afip[4:6]}/{fecha_desde_afip[:4]}"
+                if fecha_hasta_afip and len(fecha_hasta_afip) == 8:
+                    rcel_hasta = f"{fecha_hasta_afip[6:]}/{fecha_hasta_afip[4:6]}/{fecha_hasta_afip[:4]}"
+
+                portal_cuit_clean = portal_cuit.replace('-', '').replace(' ', '')
+                if cuit_clean == portal_cuit_clean:
+                    empresa_nombre = None
+                    empresa_cuit = None
+                else:
+                    empresa_nombre = cliente_dict['razon_social']
+                    empresa_cuit = cuit_clean
+
+                rcel_kwargs = dict(puntos_venta=None, fecha_desde=rcel_desde,
+                                   fecha_hasta=rcel_hasta, empresa=empresa_nombre,
+                                   cuit_empresa=empresa_cuit)
+
+                # ── RCEL emitidos ──
+                try:
+                    print(f"[UNIFICADO] RCEL emitidos para {cuit_clean}...", flush=True)
+                    scraper = RCELScraper(cuit=portal_cuit, password=portal_pass, headless=True)
+                    res = scraper.consultar(**rcel_kwargs, seccion='emitidos')
+                    if res.get('comprobantes'):
+                        facturas_rcel = RCELScraper.normalizar_comprobantes(res['comprobantes'], 'emitidos')
+                        print(f"[UNIFICADO] RCEL emitidos: {len(facturas_rcel)}", flush=True)
+                    elif res.get('error'):
+                        print(f"[UNIFICADO] RCEL emitidos error: {res['error']}", flush=True)
+                        errores_servicios.append(f"RCEL emitidos: {res['error']}")
+                except Exception as e:
+                    print(f"[UNIFICADO] RCEL emitidos fallo: {e}", flush=True)
+                    errores_servicios.append(f"RCEL emitidos: {e}")
+
+                # ── RCEL recibidos ──
+                try:
+                    print(f"[UNIFICADO] RCEL recibidos para {cuit_clean}...", flush=True)
+                    scraper2 = RCELScraper(cuit=portal_cuit, password=portal_pass, headless=True)
+                    res2 = scraper2.consultar(**rcel_kwargs, seccion='recibidos')
+                    if res2.get('comprobantes'):
+                        facturas_recibidas = RCELScraper.normalizar_comprobantes(res2['comprobantes'], 'recibidos')
+                        print(f"[UNIFICADO] RCEL recibidos: {len(facturas_recibidas)}", flush=True)
+                    elif res2.get('error'):
+                        print(f"[UNIFICADO] RCEL recibidos error: {res2['error']}", flush=True)
+                        errores_servicios.append(f"RCEL recibidos: {res2['error']}")
+                except Exception as e:
+                    print(f"[UNIFICADO] RCEL recibidos fallo: {e}", flush=True)
+                    errores_servicios.append(f"RCEL recibidos: {e}")
+            else:
+                print(f"[UNIFICADO] RCEL: credenciales portal no configuradas", flush=True)
+
+            # ── Unificar emitidos ──
+            facturas_finales = facturas_ws + facturas_rcel
+
+            if facturas_finales or facturas_recibidas:
+                partes = []
+                if facturas_finales:
+                    partes.append(f"{len(facturas_finales)} emitidos")
+                if facturas_recibidas:
+                    partes.append(f"{len(facturas_recibidas)} recibidos")
+                mensaje = f"Se encontraron {' + '.join(partes)}. {modo_consulta}"
+                web_service_usado = f"{len(facturas_ws)} via WS + {len(facturas_rcel)} via Portal"
             else:
                 web_service_usado = "Ninguno"
-                facturas_finales = []
-                mensaje = "No se encontraron facturas en ningún sistema"
-            
-            # Renderizar template con los resultados reales
-            return render_template('resultado_facturas_unificada.html', 
+                if errores_servicios:
+                    mensaje = f"Error en consulta: {'; '.join(errores_servicios)}"
+                else:
+                    mensaje = f"No se encontraron comprobantes. {modo_consulta}"
+
+            # Persistir resultados en disco — siempre 3 archivos: emitidos, recibidos, todos
+            _eid = g.user['estudio_id']
+            _gf_kwargs = dict(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, estudio_id=_eid)
+            archivos_guardados = {
+                'emitidos':  _guardar_facturas(cuit, facturas_finales, web_service_usado, sufijo='emitidos', **_gf_kwargs),
+                'recibidos': _guardar_facturas(cuit, facturas_recibidas, 'RCEL recibidos', sufijo='recibidos', **_gf_kwargs),
+                'todos':     _guardar_facturas(cuit, facturas_finales + facturas_recibidas, web_service_usado, sufijo='todos', **_gf_kwargs),
+            }
+
+            # ── Resumen agrupado por tipo de comprobante ──
+            # Notas de Crédito (tipos 3/8/13/53) restan del total — se acumulan con signo negativo
+            _NC_CODIGOS = {'3', '8', '13', '53'}
+
+            def _es_nota_credito(d, c):
+                tipo_num = str(d.get('CbteTipo', '') or c.get('tipo', '') or '').strip()
+                if tipo_num in _NC_CODIGOS:
+                    return True
+                desc = str(c.get('tipo_descripcion', '') or d.get('CbteTipoDesc', '') or '').lower()
+                return 'crédito' in desc or 'credito' in desc
+
+            resumen_por_tipo = {}
+            resumen_impositivo = {'neto': 0.0, 'iva': 0.0, 'tributos': 0.0, 'exento': 0.0, 'total': 0.0,
+                                  'iva_por_alicuota': {}, 'tributos_por_tipo': {}}
+
+            for fac in facturas_finales:
+                d = fac.get('datos', fac) if isinstance(fac, dict) else fac
+                c = fac.get('consulta', {}) if isinstance(fac, dict) else {}
+                tipo = c.get('tipo_descripcion', '') or d.get('CbteTipoDesc', d.get('CbteTipo', d.get('tipo_comprobante', 'Otro')))
+                tipo = str(tipo)
+
+                def _float(val):
+                    try:
+                        return float(val or 0)
+                    except (ValueError, TypeError):
+                        return 0.0
+
+                signo = -1 if _es_nota_credito(d, c) else 1
+
+                imp_total = _float(d.get('ImpTotal', d.get('importe_total', 0))) * signo
+                imp_neto = _float(d.get('ImpNeto', 0)) * signo
+                imp_iva = _float(d.get('ImpIVA', 0)) * signo
+                imp_trib = _float(d.get('ImpTrib', 0)) * signo
+                imp_opex = _float(d.get('ImpOpEx', 0)) * signo
+
+                if tipo not in resumen_por_tipo:
+                    resumen_por_tipo[tipo] = {'cantidad': 0, 'importe': 0.0}
+                resumen_por_tipo[tipo]['cantidad'] += 1
+                resumen_por_tipo[tipo]['importe'] += imp_total
+
+                # Acumular totales impositivos
+                resumen_impositivo['neto'] += imp_neto
+                resumen_impositivo['iva'] += imp_iva
+                resumen_impositivo['tributos'] += imp_trib
+                resumen_impositivo['exento'] += imp_opex
+                resumen_impositivo['total'] += imp_total
+
+                # Desglose IVA por alícuota (solo disponible en WSFEv1)
+                for alic in d.get('IvaDetalle', []):
+                    alic_id = alic.get('Id', '?')
+                    alic_imp = _float(alic.get('Importe', 0)) * signo
+                    alic_base = _float(alic.get('BaseImp', 0)) * signo
+                    if alic_id not in resumen_impositivo['iva_por_alicuota']:
+                        resumen_impositivo['iva_por_alicuota'][alic_id] = {'base': 0.0, 'importe': 0.0}
+                    resumen_impositivo['iva_por_alicuota'][alic_id]['base'] += alic_base
+                    resumen_impositivo['iva_por_alicuota'][alic_id]['importe'] += alic_imp
+
+                # Desglose tributos por tipo (IIBB, municipal, etc.)
+                for trib in d.get('TributosDetalle', []):
+                    trib_desc = trib.get('Desc', f"Tributo {trib.get('Id', '?')}")
+                    trib_imp = _float(trib.get('Importe', 0)) * signo
+                    trib_base = _float(trib.get('BaseImp', 0)) * signo
+                    if trib_desc not in resumen_impositivo['tributos_por_tipo']:
+                        resumen_impositivo['tributos_por_tipo'][trib_desc] = {'base': 0.0, 'importe': 0.0}
+                    resumen_impositivo['tributos_por_tipo'][trib_desc]['base'] += trib_base
+                    resumen_impositivo['tributos_por_tipo'][trib_desc]['importe'] += trib_imp
+
+            resumen_ordenado = sorted(resumen_por_tipo.items(), key=lambda x: x[1]['cantidad'], reverse=True)
+
+            # Mapeo de alícuotas IVA AFIP
+            IVA_ALICUOTAS = {'3': '0%', '4': '10.5%', '5': '21%', '6': '27%', '8': '5%', '9': '2.5%'}
+            iva_detalle = []
+            for alic_id, datos in sorted(resumen_impositivo['iva_por_alicuota'].items()):
+                iva_detalle.append({
+                    'alicuota': IVA_ALICUOTAS.get(str(alic_id), f'{alic_id}%'),
+                    'base': datos['base'],
+                    'importe': datos['importe'],
+                })
+
+            tributos_detalle = []
+            for desc, datos in sorted(resumen_impositivo['tributos_por_tipo'].items()):
+                tributos_detalle.append({
+                    'descripcion': desc,
+                    'base': datos['base'],
+                    'importe': datos['importe'],
+                })
+
+            # Determinar si mostrar sección impositiva (solo si hay IVA o tributos > 0)
+            tiene_impuestos = resumen_impositivo['iva'] > 0 or resumen_impositivo['tributos'] > 0
+
+            # Marcar origen en cada comprobante para la grilla unificada
+            for fac in facturas_finales:
+                fac['_origen'] = 'Emitido'
+            for fac in facturas_recibidas:
+                fac['_origen'] = 'Recibido'
+            todos_comprobantes = facturas_finales + facturas_recibidas
+
+            return render_template('resultado_facturas_unificada.html',
                                  cliente=cliente_dict,
-                                 facturas=facturas_finales,
+                                 todos_comprobantes=todos_comprobantes,
                                  web_service=web_service_usado,
                                  mensaje=mensaje,
-                                 total_facturas=len(facturas_finales))
+                                 total_facturas=len(facturas_finales),
+                                 total_recibidas=len(facturas_recibidas),
+                                 archivos=archivos_guardados,
+                                 fecha_desde=fecha_desde,
+                                 fecha_hasta=fecha_hasta,
+                                 resumen_por_tipo=resumen_ordenado,
+                                 resumen_impositivo=resumen_impositivo,
+                                 iva_detalle=iva_detalle,
+                                 tributos_detalle=tributos_detalle,
+                                 tiene_impuestos=tiene_impuestos)
             
         except Exception as e:
             print(f"ERROR en consultar_facturas_unificada: {str(e)}")
@@ -1142,17 +1776,17 @@ def consultar_facturas_unificada():
         if not cliente_id or not cuit_cliente:
             return jsonify({'error': 'Faltan datos del cliente'}), 400
         
-        # Obtener informaci�n del cliente de la base de datos
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM clientes WHERE id = ?', (cliente_id,))
-        cliente = cursor.fetchone()
-        
+        # Obtener informacion del cliente de la base de datos
+        estudio_id = g.user['estudio_id']
+        with get_cursor() as cur:
+            cur.execute('SELECT * FROM clientes WHERE estudio_id = %s AND id = %s',
+                        (estudio_id, cliente_id))
+            cliente = cur.fetchone()
+
         if not cliente:
             return jsonify({'error': 'Cliente no encontrado'}), 404
-        
-        # Determinar qu� web service usar basado en el tipo de cliente
-        # Aqu� implementamos la l�gica inteligente de selecci�n
+
+        # Determinar que web service usar basado en el tipo de cliente
         web_service = determinar_web_service(cliente, cuit_cliente)
         
         if web_service == 'WSFEV1':
@@ -1164,7 +1798,12 @@ def consultar_facturas_unificada():
         else:
             # Intentar ambos servicios
             resultado = consultar_ambos_servicios(cuit_cliente)
-        
+
+        try:
+            _guardar_facturas(cuit_cliente, resultado['facturas'], resultado['web_service'])
+        except Exception:
+            pass
+
         return jsonify({
             'success': True,
             'web_service': resultado['web_service'],
@@ -1174,6 +1813,92 @@ def consultar_facturas_unificada():
         
     except Exception as e:
         return jsonify({'error': f'Error en consulta: {str(e)}'}), 500
+
+def _guardar_facturas(cuit_cliente, facturas, web_service, sufijo=None, fecha_desde=None, fecha_hasta=None, estudio_id=None):
+    """Guardar resultados de consulta AFIP en JSON y CSV.
+
+    Siempre genera archivos, incluso si facturas está vacía (genera archivos vacíos).
+
+    Args:
+        sufijo: 'emitidos', 'recibidos', 'todos' — se agrega al nombre del archivo.
+        fecha_desde: fecha inicio consulta (YYYYMMDD o YYYY-MM-DD) para nomenclatura.
+        fecha_hasta: fecha fin consulta para nomenclatura.
+        estudio_id: scoping multi-tenant — archivos van a facturas/{estudio_id}/{cuit}/
+    """
+    try:
+        from datetime import datetime
+        import json
+        import csv
+
+        root_dir = Path(__file__).parent.parent
+        if estudio_id:
+            out_dir = root_dir / 'facturas' / str(estudio_id) / cuit_cliente
+        else:
+            out_dir = root_dir / 'facturas' / cuit_cliente
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        # Nomenclatura: facturas_{cuit}_{fechaDesde}_a_{fechaHasta}_{sufijo}
+        fd = (fecha_desde or '').replace('-', '')
+        fh = (fecha_hasta or '').replace('-', '')
+        rango = f"_{fd}_a_{fh}" if fd and fh else f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        tag = f"_{sufijo}" if sufijo else ""
+        base = f"facturas_{cuit_cliente}{rango}{tag}"
+
+        # ── Normalizar cada factura a dict plano ─────────────────────
+        columnas = ['origen', 'tipo', 'tipo_codigo', 'punto_venta', 'numero',
+                     'fecha', 'importe_total', 'importe_neto', 'importe_iva',
+                     'cae', 'cae_vto', 'doc_nro', 'moneda']
+
+        filas = []
+        for f in (facturas or []):
+            d = f.get('datos', f) if isinstance(f, dict) else f
+            c = f.get('consulta', {}) if isinstance(f, dict) else {}
+            filas.append({
+                'origen':         f.get('_origen', 'Emitido'),
+                'tipo':           c.get('tipo_descripcion', '') or d.get('CbteTipo', d.get('tipo_comprobante', '')),
+                'tipo_codigo':    c.get('tipo', d.get('CbteTipo', d.get('tipo_comprobante', ''))),
+                'punto_venta':    d.get('PtoVta', d.get('punto_venta', '')),
+                'numero':         d.get('CbteNro', d.get('numero_comprobante', d.get('numero', ''))),
+                'fecha':          d.get('CbteFch', d.get('fecha_emision', '')),
+                'importe_total':  d.get('ImpTotal', d.get('importe_total', '')),
+                'importe_neto':   d.get('ImpNeto', d.get('importe_gravado', '')),
+                'importe_iva':    d.get('ImpIVA', d.get('importe_iva', '')),
+                'cae':            d.get('CAE', d.get('cae', '')),
+                'cae_vto':        d.get('CAEFchVto', d.get('fecha_vencimiento_cae', d.get('fecha_vto_cae', ''))),
+                'doc_nro':        d.get('DocNro', d.get('receptor_nro_doc', d.get('receptor_numero_doc', ''))),
+                'moneda':         d.get('MonId', d.get('moneda', '')),
+            })
+
+        # ── JSON ─────────────────────────────────────────────────────
+        json_path = out_dir / f"{base}.json"
+        payload = {
+            'cuit_cliente': cuit_cliente,
+            'solicitante': Config.AFIP_SOLICITANTE_CUIT,
+            'fecha_consulta': datetime.now().isoformat(),
+            'fecha_desde': fecha_desde,
+            'fecha_hasta': fecha_hasta,
+            'web_service': web_service,
+            'tipo': sufijo or 'emitidos',
+            'total': len(filas),
+            'comprobantes': filas,
+        }
+        with open(json_path, 'w', encoding='utf-8') as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+
+        # ── CSV (compatible Excel: sep=; y BOM UTF-8) ────────────────
+        csv_path = out_dir / f"{base}.csv"
+        with open(csv_path, 'w', newline='', encoding='utf-8-sig') as fp:
+            writer = csv.DictWriter(fp, fieldnames=columnas, delimiter=';')
+            writer.writeheader()
+            writer.writerows(filas)
+
+        print(f"[GUARDAR] {len(filas)} facturas -> {json_path.name}, {csv_path.name}")
+        return {'json': str(json_path), 'csv': str(csv_path)}
+
+    except Exception as e:
+        print(f"[GUARDAR] ERROR: {e}")
+        return None
+
 
 def determinar_web_service(cliente, cuit):
     """
@@ -1190,106 +1915,154 @@ def determinar_web_service(cliente, cuit):
     except:
         return 'AUTO'
 
-def consultar_wsfev1_interno(cuit):
-    """Consultar facturas usando WSFEv1 - Adaptada de buscar_facturas_wsfev1"""
+def consultar_wsfev1_interno(cuit_cliente, fecha_desde=None, fecha_hasta=None, estudio_id=None):
+    """Consultar facturas usando WSFEv1 — patron eficiente basado en script.
+
+    1. Obtiene PVs reales via FEParamGetPtosVenta (1 sola llamada SOAP)
+    2. Solo recorre tipos principales
+    3. Early stop por fecha
+    """
+    import sys, time
+    from pathlib import Path
+    from src.afip_credentials import get_afip_credentials
+
+    creds = get_afip_credentials(estudio_id)
+    solicitante = creds['solicitante_cuit']
+    cuit_clean = str(cuit_cliente).replace('-', '').replace(' ', '')
+    print(f"[WSFEv1] solicitante={solicitante}  cliente={cuit_clean}  desde={fecha_desde}  hasta={fecha_hasta}", flush=True)
+
     try:
-        print(f"DEBUG WSFEv1: Iniciando busqueda para CUIT: {cuit}")
-
-        # Importar el cliente WSFEv1 (código adaptado de buscar_facturas_wsfev1)
-        import sys
-        from pathlib import Path
-
         root_dir = Path(__file__).parent.parent
         if str(root_dir) not in sys.path:
             sys.path.insert(0, str(root_dir))
 
         from wsfev1_client import WSFEv1Client
 
-        # Configurar rutas de certificados
-        cert_path = root_dir / 'certs' / 'certificado.crt'
-        key_path = root_dir / 'certs' / 'clave_privada.key'
+        client = WSFEv1Client(creds['cert_path'], creds['key_path'], creds['ambiente'])
 
-        print(f"DEBUG WSFEv1: Creando cliente con certificados...")
+        # Obtener PVs reales (1 sola llamada SOAP — evita recorrer PVs inexistentes)
+        pvs_reales = client.obtener_puntos_venta(cuit_clean)
+        if not pvs_reales:
+            pvs_reales = [1, 2, 3, 4, 5]
+        print(f"[WSFEv1] PVs detectados: {pvs_reales}", flush=True)
 
-        # Crear cliente WSFEv1
-        client = WSFEv1Client(
-            cert_path=str(cert_path),
-            key_path=str(key_path),
-            ambiente='prod'  # Siempre usar producción
-        )
+        tipos = [1, 6, 11, 51, 2, 3, 7, 8, 12, 13]
+        facturas = []
+        inicio = time.time()
 
-        # Buscar comprobantes (igual que la función original)
-        print(f"DEBUG WSFEv1: Buscando comprobantes...")
-        facturas = client.buscar_comprobantes_rango(
-            cuit=cuit,
-            tipos_comprobante=[1, 6, 11, 51, 2, 3, 7, 8, 12, 13],  # Tipos más comunes
-            puntos_venta=[1, 2, 3, 4, 5],
-            limite_por_tipo=10  # Reducido para el unificado
-        )
+        for tipo in tipos:
+            for pv in pvs_reales:
+                ultimo = client.obtener_ultimo_comprobante(cuit_clean, tipo, pv)
+                if not ultimo or ultimo <= 0:
+                    continue
 
-        print(f"DEBUG WSFEv1: Encontradas {len(facturas) if facturas else 0} facturas")
-        
+                print(f"[WSFEv1] tipo={tipo} pv={pv} ultimo={ultimo}", flush=True)
+
+                # Con fechas: búsqueda binaria para encontrar el rango exacto
+                if fecha_desde and fecha_hasta:
+                    rango = client.buscar_rango_por_fecha(cuit_clean, tipo, pv, ultimo, fecha_desde, fecha_hasta)
+                    if not rango:
+                        print(f"[WSFEv1] tipo={tipo} pv={pv} sin comprobantes en rango {fecha_desde}-{fecha_hasta}", flush=True)
+                        continue
+                    num_inicio, num_fin = rango
+                    print(f"[WSFEv1] tipo={tipo} pv={pv} rango encontrado: #{num_inicio}-#{num_fin} ({num_fin - num_inicio + 1} comprobantes)", flush=True)
+                else:
+                    num_fin = ultimo
+                    num_inicio = max(1, ultimo - 49)
+
+                for num in range(num_fin, num_inicio - 1, -1):
+                    try:
+                        comp = client.consultar_comprobante(cuit_clean, tipo, pv, num)
+                        if comp is None:
+                            continue
+
+                        # Safety net: validar fecha dentro del rango solicitado
+                        fecha_cbte = comp.get('CbteFch') or comp.get('fecha_emision') or ''
+                        if fecha_desde and fecha_cbte and fecha_cbte < fecha_desde:
+                            continue
+                        if fecha_hasta and fecha_cbte and fecha_cbte > fecha_hasta:
+                            continue
+
+                        comp['CUIT'] = cuit_clean
+                        comp['PtoVta'] = str(pv)
+                        comp['CbteTipo'] = str(tipo)
+                        comp['CbteTipoDesc'] = client.tipos_comprobante.get(tipo, f'Tipo {tipo}')
+                        comp['CbteNro'] = str(num)
+                        comp['consulta'] = {
+                            'cuit': cuit_clean,
+                            'tipo': tipo,
+                            'tipo_descripcion': client.tipos_comprobante.get(tipo, f'Tipo {tipo}'),
+                            'punto_venta': pv,
+                            'numero': num,
+                            'numero_formateado': f"{pv:04d}-{num:08d}"
+                        }
+                        facturas.append(comp)
+                    except Exception:
+                        continue
+
+        elapsed = time.time() - inicio
+        print(f"[WSFEv1] cliente={cuit_clean}  encontradas={len(facturas)}  tiempo={elapsed:.1f}s", flush=True)
+
         return {
             'web_service': 'WSFEv1 (Facturas Tradicionales)',
-            'facturas': facturas or []
+            'facturas': facturas
         }
     except Exception as e:
-        print(f"DEBUG WSFEv1: ERROR - {str(e)}")
+        print(f"[WSFEv1] ERROR cliente={cuit_clean}: {e}", flush=True)
         return {
             'web_service': 'WSFEv1 (Error)',
             'facturas': [],
             'error': str(e)
         }
 
-def consultar_wsmtxca_interno(cuit):
-    """Consultar facturas usando WSMTXCA"""
-    try:
-        print(f"DEBUG WSMTXCA: Iniciando busqueda para CUIT: {cuit}")
+def consultar_wsmtxca_interno(cuit_cliente, fecha_desde=None, fecha_hasta=None):
+    """Consultar facturas usando WSMTXCA.
 
-        # Limpiar CUIT
-        cuit_clean = cuit.replace('-', '').replace(' ', '')
+    Args:
+        cuit_cliente: CUIT del emisor consultado (el cliente del estudio).
+        fecha_desde: str YYYYMMDD o None
+        fecha_hasta: str YYYYMMDD o None
+    """
+    solicitante = Config.AFIP_SOLICITANTE_CUIT
+    print(f"[WSMTXCA] solicitante={solicitante}  cliente={cuit_cliente}")
+
+    try:
+        cuit_clean = cuit_cliente.replace('-', '').replace(' ', '')
         if not cuit_clean.isdigit() or len(cuit_clean) != 11:
             raise ValueError('CUIT debe tener 11 digitos numericos')
 
-        # Importar cliente WSMTXCA (código adaptado de buscar_wsmtxca_completo)
         import sys
         from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent))
+        root_dir = Path(__file__).parent.parent
+        if str(root_dir) not in sys.path:
+            sys.path.insert(0, str(root_dir))
 
         from wsmtxca_client import WSMTXCAClient
 
-        # Configurar rutas de certificados
-        cert_path = Path(__file__).parent.parent / 'certs' / 'certificado.crt'
-        key_path = Path(__file__).parent.parent / 'certs' / 'clave_privada.key'
+        cert_path = root_dir / 'certs' / 'certificado.crt'
+        key_path = root_dir / 'certs' / 'clave_privada.key'
 
-        print(f"DEBUG WSMTXCA: Creando cliente con certificados...")
-
-        # Crear cliente WSMTXCA
         cliente = WSMTXCAClient(str(cert_path), str(key_path))
 
-        # Búsqueda rápida (adaptado de la función original)
-        tipos_principales = [11, 51, 1, 6]  # Factura C, M, A, B
-        puntos_venta = [1, 2, 3, 4, 5]  # Puntos de venta más comunes
+        tipos_principales = [11, 51, 1, 6]
+        puntos_venta = [1, 2, 3, 4, 5]
 
         facturas = []
         consultas_realizadas = 0
         max_consultas = 30
 
-        print(f"DEBUG WSMTXCA: Consultando tipos {tipos_principales}")
-        
-        # Consultar rangos rápidos
         for tipo in tipos_principales:
             if consultas_realizadas >= max_consultas:
                 break
             for pv in puntos_venta:
                 if consultas_realizadas >= max_consultas:
                     break
-                    
+
                 no_encontrados = 0
-                for num in range(1, 6):  # Solo primeros 5 números para rapidez
+                for num in range(1, 6):
                     if consultas_realizadas >= max_consultas or no_encontrados >= 2:
                         break
-                        
+
                     try:
                         consultas_realizadas += 1
                         resultado = cliente.consultar_comprobante(
@@ -1298,35 +2071,48 @@ def consultar_wsmtxca_interno(cuit):
                             punto_venta=pv,
                             numero=num
                         )
-                        
+
                         if resultado and resultado.get('status') == 'encontrado':
+                            fecha_cbte = resultado.get('CbteFch') or resultado.get('fecha_emision') or ''
+                            if fecha_hasta and fecha_cbte > fecha_hasta:
+                                no_encontrados += 1
+                                continue
+                            if fecha_desde and fecha_cbte < fecha_desde:
+                                break
                             facturas.append(resultado)
                             no_encontrados = 0
                         else:
                             no_encontrados += 1
-                            
+
                     except Exception:
                         no_encontrados += 1
-        
-        print(f"DEBUG WSMTXCA: Encontrados {len(facturas)} comprobantes")
+
+        print(f"[WSMTXCA] cliente={cuit_clean}  encontrados={len(facturas)}")
 
         return {
             'web_service': 'WSMTXCA (Codigos MTX)',
             'facturas': facturas or []
         }
     except Exception as e:
+        print(f"[WSMTXCA] ERROR cliente={cuit_cliente}: {e}")
         return {
             'web_service': 'WSMTXCA (Error)',
             'facturas': [],
             'error': str(e)
         }
 
-def consultar_wsfexv1_interno(cuit):
-    """Consultar facturas usando WSFEXv1 - Exportación"""
-    try:
-        print(f"DEBUG WSFEXv1: Iniciando busqueda para CUIT: {cuit}")
+def consultar_wsfexv1_interno(cuit_cliente, fecha_desde=None, fecha_hasta=None):
+    """Consultar facturas usando WSFEXv1 - Exportación.
 
-        # Importar el cliente WSFEXv1
+    Args:
+        cuit_cliente: CUIT del emisor consultado (el cliente del estudio).
+        fecha_desde: str YYYYMMDD o None
+        fecha_hasta: str YYYYMMDD o None
+    """
+    solicitante = Config.AFIP_SOLICITANTE_CUIT
+    print(f"[WSFEXv1] solicitante={solicitante}  cliente={cuit_cliente}")
+
+    try:
         import sys
         from pathlib import Path
 
@@ -1336,21 +2122,14 @@ def consultar_wsfexv1_interno(cuit):
 
         from wsfexv1_client import WSFEXv1Client
 
-        # Configurar rutas de certificados
         cert_path = root_dir / 'certs' / 'certificado.crt'
         key_path = root_dir / 'certs' / 'clave_privada.key'
 
-        print(f"DEBUG WSFEXv1: Creando cliente con certificados...")
-
-        # Crear cliente WSFEXv1
         client = WSFEXv1Client(
             cert_path=str(cert_path),
             key_path=str(key_path),
             ambiente='prod'
         )
-
-        # Buscar comprobantes de exportación
-        print(f"DEBUG WSFEXv1: Buscando comprobantes de exportación...")
 
         # Tipos comunes de exportación
         tipos_exportacion = [19, 20, 21]  # Facturas exportación A, B, C
@@ -1358,40 +2137,39 @@ def consultar_wsfexv1_interno(cuit):
 
         facturas = []
 
-        # Intentar búsqueda básica (si el cliente lo soporta)
-        # WSFEXv1 tiene métodos diferentes, adaptamos según disponibilidad
         try:
-            # Método simplificado - consultar últimos comprobantes
             if hasattr(client, 'buscar_comprobantes_rango'):
                 facturas = client.buscar_comprobantes_rango(
-                    cuit=cuit,
+                    cuit=cuit_cliente,
                     tipos_comprobante=tipos_exportacion,
                     puntos_venta=puntos_venta,
-                    limite_por_tipo=10
+                    limite_por_tipo=10,
+                    fecha_desde=fecha_desde,
+                    fecha_hasta=fecha_hasta
                 )
         except Exception as inner_e:
-            print(f"DEBUG WSFEXv1: No se pudo usar búsqueda avanzada: {str(inner_e)}")
+            print(f"[WSFEXv1] busqueda fallida cliente={cuit_cliente}: {inner_e}")
 
-        print(f"DEBUG WSFEXv1: Encontradas {len(facturas) if facturas else 0} facturas")
+        print(f"[WSFEXv1] cliente={cuit_cliente}  encontradas={len(facturas) if facturas else 0}")
 
         return {
             'web_service': 'WSFEXv1 (Exportación)',
             'facturas': facturas or []
         }
     except Exception as e:
-        print(f"DEBUG WSFEXv1: ERROR - {str(e)}")
+        print(f"[WSFEXv1] ERROR cliente={cuit_cliente}: {e}")
         return {
             'web_service': 'WSFEXv1 (Error)',
             'facturas': [],
             'error': str(e)
         }
 
-def consultar_ambos_servicios(cuit):
-    """Consultar en ambos servicios y combinar resultados"""
+def consultar_ambos_servicios(cuit_cliente):
+    """Consultar en los 3 servicios y combinar resultados."""
     try:
-        resultados_wsfev1 = consultar_wsfev1_interno(cuit)
-        resultados_wsmtxca = consultar_wsmtxca_interno(cuit)
-        resultados_wsfexv1 = consultar_wsfexv1_interno(cuit)
+        resultados_wsfev1 = consultar_wsfev1_interno(cuit_cliente)
+        resultados_wsmtxca = consultar_wsmtxca_interno(cuit_cliente)
+        resultados_wsfexv1 = consultar_wsfexv1_interno(cuit_cliente)
         
         facturas_combinadas = []
         
@@ -1427,8 +2205,108 @@ def consultar_ambos_servicios(cuit):
         }
 
 
+# ═══════════════════════════════════════════════════════════════════
+# RCEL Scraping — Comprobantes via portal web (PVs no cubiertos por WS)
+# ═══════════════════════════════════════════════════════════════════
+
+@app.route('/consultar-rcel')
+@login_required
+def consultar_rcel():
+    """Consultar comprobantes via scraping RCEL (PVs Factura en Linea / Factuweb)."""
+    cliente_id = request.args.get('cliente_id')
+    cuit = request.args.get('cuit', '')
+    fecha_desde = request.args.get('fecha_desde', '')
+    fecha_hasta = request.args.get('fecha_hasta', '')
+
+    # Obtener datos del cliente de la DB
+    cliente = None
+    if cliente_id:
+        try:
+            with get_cursor() as cur:
+                cur.execute("SELECT * FROM clientes WHERE id = %s", (cliente_id,))
+                row = cur.fetchone()
+                if row:
+                    cols = [d[0] for d in cur.description]
+                    cliente = dict(zip(cols, row))
+        except Exception:
+            pass
+
+    if not cliente:
+        cliente = {'id': cliente_id, 'cuit': cuit, 'razon_social': '', 'condicion_iva': ''}
+
+    # Verificar credenciales del portal
+    portal_cuit = Config.AFIP_PORTAL_CUIT
+    portal_pass = Config.AFIP_PORTAL_PASSWORD
+    if not portal_cuit or not portal_pass:
+        return render_template('resultado_rcel.html',
+            cliente=cliente, facturas=[], total_facturas=0,
+            error='Credenciales del portal AFIP no configuradas (AFIP_PORTAL_CUIT / AFIP_PORTAL_PASSWORD en .env)')
+
+    # Convertir fechas dd/mm/yyyy para RCEL
+    rcel_desde = '01/01/2020'
+    rcel_hasta = None  # default = hoy
+    if fecha_desde:
+        try:
+            parts = fecha_desde.split('-')
+            rcel_desde = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        except Exception:
+            pass
+    if fecha_hasta:
+        try:
+            parts = fecha_hasta.split('-')
+            rcel_hasta = f"{parts[2]}/{parts[1]}/{parts[0]}"
+        except Exception:
+            pass
+
+    print(f"[RCEL ROUTE] cliente={cuit} desde={rcel_desde} hasta={rcel_hasta}", flush=True)
+
+    try:
+        import sys
+        root_dir = Path(__file__).parent.parent
+        if str(root_dir) not in sys.path:
+            sys.path.insert(0, str(root_dir))
+
+        from rcel_scraper import RCELScraper
+
+        scraper = RCELScraper(cuit=portal_cuit, password=portal_pass, headless=True)
+        resultado = scraper.consultar(
+            puntos_venta=None,  # todos los disponibles
+            fecha_desde=rcel_desde,
+            fecha_hasta=rcel_hasta,
+        )
+
+        if resultado.get('error'):
+            return render_template('resultado_rcel.html',
+                cliente=cliente, facturas=[], total_facturas=0,
+                error=resultado['error'])
+
+        # Normalizar al formato del sistema
+        facturas = RCELScraper.normalizar_comprobantes(resultado['comprobantes'])
+
+        # Guardar archivos
+        if facturas:
+            cuit_guardar = (cuit or '').replace('-', '').replace(' ', '') or portal_cuit
+            _guardar_facturas(cuit_guardar, facturas, 'RCEL (Portal Web)')
+
+        return render_template('resultado_rcel.html',
+            cliente=cliente,
+            facturas=facturas,
+            total_facturas=len(facturas),
+            empresa=resultado.get('empresa', ''),
+            pvs_consultados=resultado.get('pvs_consultados', []),
+            pvs_disponibles=resultado.get('pvs_disponibles', []),
+            tiempo=resultado.get('tiempo'),
+            error=None)
+
+    except Exception as e:
+        print(f"[RCEL ROUTE] ERROR: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return render_template('resultado_rcel.html',
+            cliente=cliente, facturas=[], total_facturas=0,
+            error=str(e))
+
+
 if __name__ == '__main__':
     app.run(debug=True)
-
-
 

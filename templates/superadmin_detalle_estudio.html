@@ -1,0 +1,200 @@
+{% extends "superadmin_base.html" %}
+{% block title %}{{ estudio.nombre }}{% endblock %}
+
+{% block content %}
+{# ── Breadcrumb ── #}
+<div class="flex items-center gap-2 text-sm text-slate-500 mb-4">
+    <a href="{{ url_for('superadmin_panel') }}" class="hover:text-slate-300 transition">Estudios</a>
+    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/>
+    </svg>
+    <span class="text-slate-300">{{ estudio.nombre }}</span>
+</div>
+
+{# ── Header del estudio ── #}
+<div class="bg-slate-800/60 border border-white/10 rounded-xl p-5 mb-6">
+    <div class="flex items-start justify-between">
+        <div>
+            <h1 class="text-xl font-bold text-white">{{ estudio.nombre }}</h1>
+            <p class="text-sm text-slate-400 mt-1">{{ estudio.email }}</p>
+            {% if estudio.cuit %}
+            <p class="text-sm text-slate-500">CUIT: {{ estudio.cuit }}</p>
+            {% endif %}
+            {% if estudio.telefono %}
+            <p class="text-sm text-slate-500">Tel: {{ estudio.telefono }}</p>
+            {% endif %}
+        </div>
+        <div class="text-right flex flex-col items-end gap-2">
+            {% if estudio.activo %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-500/10 text-green-400 text-xs font-bold">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>ACTIVO
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-xs font-bold">
+                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>INACTIVO
+            </span>
+            {% endif %}
+            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold
+                {% if estudio.plan == 'enterprise' %}bg-purple-500/20 text-purple-400
+                {% elif estudio.plan == 'profesional' %}bg-blue-500/20 text-blue-400
+                {% elif estudio.plan == 'basico' %}bg-green-500/20 text-green-400
+                {% else %}bg-yellow-500/20 text-yellow-400{% endif %}">
+                {{ estudio.plan|upper }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+
+    {# ── Plan y membresia ── #}
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Plan y Membresia</h3>
+        <form method="POST" action="{{ url_for('superadmin_update_plan', estudio_id=estudio.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">Plan</label>
+                    <select name="plan" class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30">
+                        {% for p in ['trial', 'basico', 'profesional', 'enterprise'] %}
+                        <option value="{{ p }}" {{ 'selected' if estudio.plan == p }}>{{ p|upper }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">Vencimiento membresia</label>
+                    <input type="date" name="membresia_hasta"
+                           value="{{ estudio.membresia_hasta or '' }}"
+                           class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:border-blue-500">
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Max clientes</label>
+                        <input type="number" name="max_clientes" value="{{ estudio.max_clientes }}"
+                               class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Max usuarios</label>
+                        <input type="number" name="max_usuarios" value="{{ estudio.max_usuarios }}"
+                               class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-500 mb-1">Max consultas</label>
+                        <input type="number" name="max_consultas_mes" value="{{ estudio.max_consultas_mes }}"
+                               class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">Notas internas</label>
+                    <textarea name="notas_admin" rows="2"
+                              class="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm">{{ estudio.notas_admin or '' }}</textarea>
+                </div>
+                <button type="submit"
+                        class="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                    Guardar cambios
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {# ── Uso del mes ── #}
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Uso del Mes</h3>
+        <div class="space-y-2 mb-4">
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Total clientes</span>
+                <span class="text-slate-300 font-medium">{{ total_clientes }} / {{ estudio.max_clientes }}</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Usuarios activos</span>
+                <span class="text-slate-300 font-medium">{{ usuarios|length }} / {{ estudio.max_usuarios }}</span>
+            </div>
+        </div>
+
+        {% if uso_mes %}
+        <h4 class="text-xs text-slate-500 uppercase tracking-wider mb-2 mt-4">Consultas AFIP este mes</h4>
+        <table class="w-full text-xs">
+            <thead>
+                <tr class="text-slate-500">
+                    <th class="text-left pb-1">Servicio</th>
+                    <th class="text-right pb-1">Consultas</th>
+                    <th class="text-right pb-1">Comprobantes</th>
+                    <th class="text-right pb-1">Ultima</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-700/50">
+                {% for u in uso_mes %}
+                <tr>
+                    <td class="py-1 text-slate-300">{{ u.servicio }}</td>
+                    <td class="py-1 text-slate-300 text-right">{{ u.total }}</td>
+                    <td class="py-1 text-slate-300 text-right">{{ u.comprobantes or 0 }}</td>
+                    <td class="py-1 text-slate-500 text-right">{{ u.ultima.strftime('%d/%m %H:%M') if u.ultima else '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-sm text-slate-500 mt-4">Sin consultas este mes.</p>
+        {% endif %}
+
+        {# Config AFIP #}
+        <h4 class="text-xs text-slate-500 uppercase tracking-wider mb-2 mt-6">Config AFIP</h4>
+        {% if configs_afip %}
+        {% for cfg in configs_afip %}
+        <div class="text-xs text-slate-400 mb-1">
+            CUIT: {{ cfg.solicitante_cuit }} | {{ cfg.ambiente|upper }}
+            {% if cfg.activo %}
+            <span class="text-green-400 font-semibold">ACTIVA</span>
+            {% else %}
+            <span class="text-slate-600">inactiva</span>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="text-xs text-slate-500">Sin configuracion AFIP (usa fallback .env)</p>
+        {% endif %}
+    </div>
+</div>
+
+{# ── Usuarios del estudio ── #}
+<div class="bg-slate-800/60 border border-white/10 rounded-xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-slate-700/50">
+        <h3 class="text-sm font-semibold text-slate-400">Usuarios ({{ usuarios|length }})</h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="bg-slate-800 text-slate-500 text-xs uppercase tracking-wider">
+                    <th class="px-4 py-2 text-left font-medium">Nombre</th>
+                    <th class="px-4 py-2 text-left font-medium">Email</th>
+                    <th class="px-4 py-2 text-left font-medium">Rol</th>
+                    <th class="px-4 py-2 text-center font-medium">Estado</th>
+                    <th class="px-4 py-2 text-left font-medium">Ultimo login</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-700/50">
+                {% for u in usuarios %}
+                <tr class="hover:bg-slate-700/30 transition {{ 'opacity-50' if not u.activo }}">
+                    <td class="px-4 py-2.5 text-white font-medium">{{ u.nombre }}</td>
+                    <td class="px-4 py-2.5 text-slate-300">{{ u.email }}</td>
+                    <td class="px-4 py-2.5">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold
+                            {% if u.rol == 'admin' %}bg-blue-500/20 text-blue-400
+                            {% elif u.rol == 'contador' %}bg-green-500/20 text-green-400
+                            {% else %}bg-slate-600/30 text-slate-400{% endif %}">
+                            {{ u.rol|upper }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2.5 text-center">
+                        <span class="inline-block w-2 h-2 rounded-full {{ 'bg-green-500' if u.activo else 'bg-red-500' }}"></span>
+                    </td>
+                    <td class="px-4 py-2.5 text-slate-500 text-xs">
+                        {{ u.ultimo_login.strftime('%d/%m/%Y %H:%M') if u.ultimo_login else 'Nunca' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

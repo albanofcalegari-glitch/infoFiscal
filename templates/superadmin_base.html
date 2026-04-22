@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin{% endblock %} - InfoFiscal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen bg-slate-900 flex">
+
+    {# ── Sidebar ── #}
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-30 w-64 bg-slate-800 border-r border-slate-700 flex flex-col transition-transform lg:translate-x-0 -translate-x-full">
+
+        {# Logo #}
+        <div class="px-5 py-5 border-b border-slate-700 flex items-center gap-3">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            <div>
+                <div class="text-white font-bold text-sm leading-tight">InfoFiscal</div>
+                <div class="text-[10px] text-amber-400 font-semibold uppercase tracking-widest">Superadmin</div>
+            </div>
+        </div>
+
+        {# Nav links #}
+        <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            {% set link_base = "flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition" %}
+            {% set link_active = "bg-blue-600 text-white shadow-md shadow-blue-600/20" %}
+            {% set link_inactive = "text-slate-300 hover:bg-slate-700 hover:text-white" %}
+
+            <a href="{{ url_for('superadmin_dashboard') }}"
+               class="{{ link_base }} {{ link_active if active_page == 'dashboard' else link_inactive }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25v-2.25z"/>
+                </svg>
+                Dashboard
+            </a>
+
+            <a href="{{ url_for('superadmin_panel') }}"
+               class="{{ link_base }} {{ link_active if active_page == 'estudios' else link_inactive }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5M3.75 3v18m16.5-18v18M5.25 3h13.5M5.25 21h13.5M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21"/>
+                </svg>
+                Estudios
+            </a>
+
+            <a href="{{ url_for('superadmin_crear_estudio') }}"
+               class="{{ link_base }} {{ link_active if active_page == 'crear_estudio' else link_inactive }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/>
+                </svg>
+                Nuevo Estudio
+            </a>
+
+            <div class="pt-5 pb-2 px-4">
+                <div class="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Sistema</div>
+            </div>
+
+            <a href="{{ url_for('superadmin_health') }}"
+               class="{{ link_base }} {{ link_active if active_page == 'health' else link_inactive }}">
+                <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/>
+                </svg>
+                Estado AFIP
+            </a>
+        </nav>
+
+        {# User footer #}
+        <div class="px-4 py-4 border-t border-slate-700">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold">
+                    {{ g.user.nombre[0]|upper if g.user else 'S' }}
+                </div>
+                <div class="min-w-0">
+                    <div class="text-sm text-white font-medium truncate">{{ g.user.nombre if g.user else 'Superadmin' }}</div>
+                    <div class="text-[11px] text-slate-400 truncate">{{ g.user.email if g.user else '' }}</div>
+                </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}"
+               class="flex items-center gap-2 text-red-400 hover:text-red-300 text-sm font-medium transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/>
+                </svg>
+                Cerrar sesion
+            </a>
+        </div>
+    </aside>
+
+    {# ── Main content ── #}
+    <div class="flex-1 lg:ml-64">
+        {# Mobile header #}
+        <header class="lg:hidden sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-white/10 px-4 py-3 flex items-center justify-between">
+            <button onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')"
+                    class="text-white p-1">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+                </svg>
+            </button>
+            <span class="text-white font-semibold text-sm">InfoFiscal Admin</span>
+            <div class="w-6"></div>
+        </header>
+
+        {# Page content #}
+        <main class="p-6 lg:p-8 max-w-7xl mx-auto">
+            {# Flash messages #}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="mb-6 space-y-2">
+                {% for cat, msg in messages %}
+                <div class="rounded-lg p-3 border text-sm font-medium
+                    {% if cat == 'success' %}bg-green-900/30 border-green-500/30 text-green-300
+                    {% else %}bg-red-900/30 border-red-500/30 text-red-300{% endif %}">
+                    {{ msg }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    {# Mobile overlay #}
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-20 hidden lg:hidden"
+         onclick="document.getElementById('sidebar').classList.add('-translate-x-full'); this.classList.add('hidden')"></div>
+
+    <script>
+    // Toggle sidebar on mobile
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const observer = new MutationObserver(() => {
+        if (!sidebar.classList.contains('-translate-x-full')) {
+            overlay.classList.remove('hidden');
+        } else {
+            overlay.classList.add('hidden');
+        }
+    });
+    observer.observe(sidebar, { attributes: true, attributeFilter: ['class'] });
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

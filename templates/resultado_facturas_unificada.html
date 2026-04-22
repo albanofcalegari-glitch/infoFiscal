@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados Consulta - InfoFiscal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        /* Filtros inline */
+        .col-filter {
+            width: 100%;
+            padding: 4px 6px;
+            font-size: 11px;
+            font-weight: 400;
+            border: 1px solid rgba(255,255,255,0.25);
+            border-radius: 4px;
+            background: rgba(255,255,255,0.12);
+            color: #fff;
+            outline: none;
+            margin-top: 4px;
+        }
+        .col-filter::placeholder { color: rgba(255,255,255,0.45); }
+        .col-filter:focus { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.18); }
+        /* Badge origen */
+        .badge-emitido { background: #3b82f6; color: #fff; }
+        .badge-recibido { background: #10b981; color: #fff; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+        }
+        /* Contador filtrado */
+        #filter-count { transition: opacity 0.15s; }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-14">
+            <div class="flex gap-3">
+                <a href="{{ url_for('consulta_facturas_unificada') }}"
+                   class="bg-white/10 text-slate-200 hover:bg-white/20 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    &larr; Nueva consulta
+                </a>
+                <a href="{{ url_for('home') }}"
+                   class="bg-white/10 text-slate-200 hover:bg-white/20 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition">
+                    Inicio
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8">
+
+        <h2 class="text-2xl font-bold text-white mb-6">Resultado de Consulta</h2>
+
+        {% if cliente %}
+        <div class="glass rounded-xl p-4 mb-4 border border-white/40">
+            <span class="font-semibold text-slate-800">{{ cliente.razon_social or 'Sin nombre' }}</span>
+            {% if cliente.cuit %}
+            <span class="text-sm text-slate-500 ml-2">CUIT: {{ cliente.cuit }} &mdash; {{ cliente.condicion_iva or '' }}</span>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {# ══════════════ TARJETA RESUMEN ══════════════ #}
+        <div class="glass rounded-xl p-5 border border-white/40 mb-6">
+
+            <div class="flex justify-center gap-8 mb-4">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-slate-800">{{ total_facturas or 0 }}</div>
+                    <div class="text-xs text-slate-500 mt-1">Emitidos</div>
+                </div>
+                {% if total_recibidas %}
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-emerald-700">{{ total_recibidas }}</div>
+                    <div class="text-xs text-slate-500 mt-1">Recibidos</div>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if resumen_por_tipo %}
+            <div class="border-t border-slate-200 pt-3">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-slate-500 text-xs uppercase tracking-wider">
+                            <th class="text-left pb-2 font-medium">Tipo</th>
+                            <th class="text-right pb-2 font-medium">Cant.</th>
+                            <th class="text-right pb-2 font-medium">Importe Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% set ns = namespace(gran_total=0.0) %}
+                        {% for tipo, datos in resumen_por_tipo %}
+                        {% set ns.gran_total = ns.gran_total + datos.importe %}
+                        <tr>
+                            <td class="py-1.5 text-slate-700 font-medium">{{ tipo }}</td>
+                            <td class="py-1.5 text-slate-600 text-right">{{ datos.cantidad }}</td>
+                            <td class="py-1.5 text-slate-600 text-right">${{ "{:,.2f}".format(datos.importe) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="border-t-2 border-slate-300">
+                            <td class="pt-2 text-slate-800 font-bold">Total</td>
+                            <td class="pt-2 text-slate-800 font-bold text-right">{{ total_facturas }}</td>
+                            <td class="pt-2 text-slate-800 font-bold text-right">${{ "{:,.2f}".format(ns.gran_total) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% endif %}
+
+            {# Desglose impositivo #}
+            {% if tiene_impuestos and resumen_impositivo %}
+            <div class="border-t border-slate-200 mt-4 pt-3">
+                <h4 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Desglose Impositivo</h4>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm mb-2">
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Neto Gravado</span>
+                        <span class="text-slate-700 font-medium">${{ "{:,.2f}".format(resumen_impositivo.neto) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Op. Exentas</span>
+                        <span class="text-slate-700 font-medium">${{ "{:,.2f}".format(resumen_impositivo.exento) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">IVA</span>
+                        <span class="text-slate-700 font-semibold">${{ "{:,.2f}".format(resumen_impositivo.iva) }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500">Tributos</span>
+                        <span class="text-slate-700 font-semibold">${{ "{:,.2f}".format(resumen_impositivo.tributos) }}</span>
+                    </div>
+                </div>
+                {% if iva_detalle %}
+                <table class="w-full text-xs mt-2">
+                    <thead><tr class="text-slate-400 uppercase tracking-wider">
+                        <th class="text-left pb-1 font-medium">IVA Alicuota</th>
+                        <th class="text-right pb-1 font-medium">Base Imp.</th>
+                        <th class="text-right pb-1 font-medium">Importe</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-slate-50">
+                        {% for item in iva_detalle %}
+                        <tr>
+                            <td class="py-1 text-slate-600">{{ item.alicuota }}</td>
+                            <td class="py-1 text-slate-600 text-right">${{ "{:,.2f}".format(item.base) }}</td>
+                            <td class="py-1 text-slate-700 font-medium text-right">${{ "{:,.2f}".format(item.importe) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+                {% if tributos_detalle %}
+                <table class="w-full text-xs mt-2">
+                    <thead><tr class="text-slate-400 uppercase tracking-wider">
+                        <th class="text-left pb-1 font-medium">Tributo</th>
+                        <th class="text-right pb-1 font-medium">Base Imp.</th>
+                        <th class="text-right pb-1 font-medium">Importe</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-slate-50">
+                        {% for item in tributos_detalle %}
+                        <tr>
+                            <td class="py-1 text-slate-600">{{ item.descripcion }}</td>
+                            <td class="py-1 text-slate-600 text-right">${{ "{:,.2f}".format(item.base) }}</td>
+                            <td class="py-1 text-slate-700 font-medium text-right">${{ "{:,.2f}".format(item.importe) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        {% if mensaje %}
+        <p class="text-sm font-medium text-slate-200 mb-4">{{ mensaje }}</p>
+        {% endif %}
+
+        {% if afip_caido %}
+        <div class="glass rounded-xl p-6 text-center border border-red-300/60 mb-4">
+            <div class="text-3xl mb-3">&#9888;</div>
+            <p class="text-red-600 font-semibold mb-1">Servicios ARCA no disponibles</p>
+            <p class="text-sm text-slate-500">Los servidores de ARCA/AFIP no responden en este momento. Intente nuevamente mas tarde.</p>
+            <a href="{{ url_for('consulta_facturas_unificada') }}"
+               class="inline-block mt-4 bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                Reintentar
+            </a>
+        </div>
+
+        {# ══════════════ GRILLA UNIFICADA ══════════════ #}
+        {% elif todos_comprobantes and todos_comprobantes|length > 0 %}
+
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold text-white">Comprobantes</h3>
+            <span id="filter-count" class="text-xs text-slate-400"></span>
+        </div>
+
+        <div class="glass rounded-xl border border-white/40 overflow-hidden mb-8">
+            <div class="max-h-[650px] overflow-y-auto">
+                <table id="tbl-comprobantes" class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-slate-800 text-white text-left">
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                Origen
+                                <select class="col-filter" data-col="0">
+                                    <option value="">Todos</option>
+                                    <option value="Emitido">Emitido</option>
+                                    <option value="Recibido">Recibido</option>
+                                </select>
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                Tipo
+                                <input class="col-filter" data-col="1" placeholder="Filtrar...">
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                PV
+                                <input class="col-filter" data-col="2" placeholder="Filtrar...">
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                Numero
+                                <input class="col-filter" data-col="3" placeholder="Filtrar...">
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                Fecha
+                                <input class="col-filter" data-col="4" placeholder="Filtrar...">
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10 text-right">
+                                Importe
+                                <input class="col-filter text-right" data-col="5" placeholder="Filtrar...">
+                            </th>
+                            <th class="px-3 py-3 font-medium sticky top-0 bg-slate-800 z-10">
+                                CAE / Emisor
+                                <input class="col-filter" data-col="6" placeholder="Filtrar...">
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for f in todos_comprobantes %}
+                        {% set d = f.get('datos', f) if f.get is defined else f %}
+                        {% set c = f.get('consulta', {}) if f.get is defined else {} %}
+                        {% set origen = f.get('_origen', 'Emitido') %}
+                        {% set tipo_txt = c.get('tipo_descripcion', '') or d.get('CbteTipoDesc', d.get('CbteTipo', d.get('tipo_comprobante', '-'))) %}
+                        {% set pv  = d.get('PtoVta', d.get('punto_venta', '-')) %}
+                        {% set nro = d.get('CbteNro', d.get('numero_comprobante', d.get('numero', '-'))) %}
+                        {% set fecha_raw = d.get('CbteFch', d.get('fecha_emision', '')) or '' %}
+                        {% if fecha_raw|length == 8 and fecha_raw.isdigit() %}
+                            {% set fecha = fecha_raw[:4] ~ '-' ~ fecha_raw[4:6] ~ '-' ~ fecha_raw[6:] %}
+                        {% else %}
+                            {% set fecha = fecha_raw or '-' %}
+                        {% endif %}
+                        {% set imp_raw = d.get('ImpTotal', d.get('importe_total', '')) %}
+                        {% if origen == 'Recibido' %}
+                            {% set extra = d.get('DenominacionEmisor', d.get('DocNro', '-')) %}
+                        {% else %}
+                            {% set extra = d.get('CAE', d.get('cae', '')) %}
+                            {% if not extra or extra == 'None' %}{% set extra = '-' %}{% endif %}
+                        {% endif %}
+
+                        <tr class="hover:bg-slate-50/50 transition">
+                            <td class="px-3 py-2.5">
+                                <span class="badge {{ 'badge-emitido' if origen == 'Emitido' else 'badge-recibido' }}">{{ origen }}</span>
+                            </td>
+                            <td class="px-3 py-2.5 text-slate-700">{{ tipo_txt }}</td>
+                            <td class="px-3 py-2.5 text-slate-700">{{ pv }}</td>
+                            <td class="px-3 py-2.5 text-slate-700">{{ nro }}</td>
+                            <td class="px-3 py-2.5 text-slate-700">{{ fecha }}</td>
+                            <td class="px-3 py-2.5 text-slate-700 text-right">
+                                {% if imp_raw and imp_raw != 'None' %}
+                                    ${{ "%.2f"|format(imp_raw|float) }}
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td class="px-3 py-2.5 text-slate-500 text-xs">{{ extra }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% else %}
+        <div class="glass rounded-xl p-10 text-center border border-white/40 mb-8">
+            <p class="text-slate-500">No se encontraron comprobantes para este cliente.</p>
+        </div>
+        {% endif %}
+
+    </main>
+
+    <script>
+    (function() {
+        const table = document.getElementById('tbl-comprobantes');
+        if (!table) return;
+
+        const tbody = table.tBodies[0];
+        const rows = Array.from(tbody.rows);
+        const filters = table.querySelectorAll('.col-filter');
+        const countEl = document.getElementById('filter-count');
+        const totalRows = rows.length;
+
+        function applyFilters() {
+            const values = [];
+            filters.forEach(f => {
+                const col = parseInt(f.dataset.col);
+                const val = (f.value || '').toLowerCase().trim();
+                if (val) values.push({ col, val });
+            });
+
+            let visible = 0;
+            rows.forEach(row => {
+                const cells = row.cells;
+                let show = true;
+                for (const { col, val } of values) {
+                    const text = (cells[col]?.textContent || '').toLowerCase().trim();
+                    if (!text.includes(val)) { show = false; break; }
+                }
+                row.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+
+            if (values.length > 0) {
+                countEl.textContent = `Mostrando ${visible} de ${totalRows}`;
+                countEl.style.opacity = '1';
+            } else {
+                countEl.textContent = '';
+                countEl.style.opacity = '0';
+            }
+        }
+
+        filters.forEach(f => {
+            f.addEventListener('input', applyFilters);
+            f.addEventListener('change', applyFilters);
+        });
+    })();
+    </script>
+</body>
+</html>

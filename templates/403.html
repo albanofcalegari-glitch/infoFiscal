@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso denegado - InfoFiscal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-4xl mx-auto px-6 py-4">
+            <h1 class="text-lg font-bold text-white tracking-wide">InfoFiscal</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 flex items-center justify-center px-4 py-20">
+        <div class="glass rounded-xl shadow-xl p-10 text-center max-w-sm">
+            <div class="text-5xl font-bold text-slate-800 mb-2">403</div>
+            <p class="text-slate-500 mb-6">No tiene permisos para acceder a esta seccion.</p>
+            <a href="{{ url_for('home') }}"
+               class="inline-block bg-blue-600 text-white px-6 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                Volver al inicio
+            </a>
+        </div>
+    </main>
+</body>
+</html>

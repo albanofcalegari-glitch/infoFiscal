@@ -114,7 +114,7 @@ class ARCAServiceSimple:
         if testing and os.environ.get('INFOFISCAL_MODE') == 'production':
             raise ValueError("CRÍTICO: No se puede usar testing=True en INFOFISCAL_MODE=production")
         
-        self.cuit = cuit or os.environ.get('AFIP_CONSULTOR_CUIT', '20321518045')
+        self.cuit = cuit or os.environ.get('AFIP_SOLICITANTE_CUIT', '20321518045')
         self.cert_path = cert_path
         self.key_path = key_path
         self.testing = testing

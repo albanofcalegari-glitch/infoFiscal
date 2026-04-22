@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consulta Factura Cliente - InfoFiscal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner {
+            display: inline-block; width: 16px; height: 16px;
+            border: 2px solid #e5e7eb; border-top-color: #3b82f6;
+            border-radius: 50%; animation: spin .6s linear infinite;
+            vertical-align: middle; margin-right: 6px;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+            <h1 class="text-lg font-bold text-white tracking-wide">InfoFiscal</h1>
+            <a href="/home" class="text-sm text-slate-300 hover:text-white transition">&larr; Volver</a>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-3xl mx-auto px-4 py-8">
+
+        <h2 class="text-2xl font-bold text-white mb-6">Datos del cliente seleccionado</h2>
+
+        <!-- Client data card -->
+        <div class="glass rounded-xl shadow-xl p-5 mb-6 border border-white/40 overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-xs text-slate-500 uppercase tracking-wide">
+                        <th class="pb-2 pr-3">Tipo Doc</th>
+                        <th class="pb-2 pr-3">Nro Doc</th>
+                        <th class="pb-2 pr-3">Apellido</th>
+                        <th class="pb-2 pr-3">Nombres</th>
+                        <th class="pb-2 pr-3">CUIT</th>
+                        <th class="pb-2 pr-3">Fecha Nac.</th>
+                        <th class="pb-2 pr-3">Condicion IVA</th>
+                        <th class="pb-2">Cat. Monotributo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="text-slate-700">
+                        <td class="py-2 pr-3">{{ cliente.tipoDocumento }}</td>
+                        <td class="py-2 pr-3">{{ cliente.nroDocumento }}</td>
+                        <td class="py-2 pr-3 font-medium">{{ cliente.apellido }}</td>
+                        <td class="py-2 pr-3 font-medium">{{ cliente.nombres }}</td>
+                        <td class="py-2 pr-3">{{ cliente.CUIT or cliente.cuit }}</td>
+                        <td class="py-2 pr-3">{{ cliente.fechaNacimiento }}</td>
+                        <td class="py-2 pr-3">{{ cliente.condicionIVA }}</td>
+                        <td class="py-2">{{ cliente.categoriaMonotriibuto }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Download config -->
+        <div class="glass rounded-xl shadow-xl p-6 mb-6 border border-white/40">
+            <h3 class="text-sm font-semibold text-slate-700 mb-4">Configuracion de Descarga</h3>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label for="fechaDesde" class="block text-xs font-medium text-slate-500 mb-1">Desde</label>
+                    <input type="date" id="fechaDesde"
+                           class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label for="fechaHasta" class="block text-xs font-medium text-slate-500 mb-1">Hasta</label>
+                    <input type="date" id="fechaHasta"
+                           class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label for="tiposIncluir" class="block text-xs font-medium text-slate-500 mb-1">Tipos a incluir (opcional)</label>
+                <input type="text" id="tiposIncluir" placeholder="Ej: 1,6,11 (Facturas A,B,C)"
+                       class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-slate-400 mt-1">Deje vacio para incluir todos los tipos</p>
+            </div>
+
+            <button id="descargarFacturasBtn"
+                    class="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                Descargar Facturas AFIP
+            </button>
+        </div>
+
+        <div id="resultadoDescarga"></div>
+    </main>
+
+    <script>
+    window.addEventListener('DOMContentLoaded', function() {
+        const hoy = new Date();
+        const hace1m = new Date();
+        hace1m.setMonth(hoy.getMonth() - 1);
+        document.getElementById('fechaHasta').value = hoy.toISOString().split('T')[0];
+        document.getElementById('fechaDesde').value = hace1m.toISOString().split('T')[0];
+    });
+
+    document.getElementById('descargarFacturasBtn').onclick = function() {
+        const cuit = '{{ cliente.CUIT or cliente.cuit }}';
+        const btn = this;
+        const resultado = document.getElementById('resultadoDescarga');
+
+        const fechaDesde = document.getElementById('fechaDesde').value;
+        const fechaHasta = document.getElementById('fechaHasta').value;
+        const tiposIncluir = document.getElementById('tiposIncluir').value.trim();
+
+        if (!fechaDesde || !fechaHasta) { alert('Por favor, complete las fechas desde y hasta'); return; }
+        if (new Date(fechaDesde) > new Date(fechaHasta)) { alert('La fecha "desde" no puede ser posterior a "hasta"'); return; }
+
+        let url = `/descargar-facturas?cuit=${encodeURIComponent(cuit)}&desde=${fechaDesde}&hasta=${fechaHasta}`;
+        if (tiposIncluir) url += `&incluir_tipos=${encodeURIComponent(tiposIncluir)}`;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span>Consultando AFIP...';
+
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.textContent = 'Descargar Facturas AFIP';
+
+                if (data.success) {
+                    let cls = 'border-green-200 text-green-700 bg-green-50';
+                    if (data.status === 'sin_facturas' || data.tipo_alerta === 'info') cls = 'border-blue-200 text-blue-700 bg-blue-50';
+                    if (data.tipo_alerta === 'warning') cls = 'border-amber-200 text-amber-700 bg-amber-50';
+
+                    let html = `<div class="glass rounded-xl p-4 border ${cls} mb-3">
+                        <p class="text-sm font-medium">${data.user_message || 'Proceso completado'}</p>`;
+
+                    if (data.fecha_desde && data.fecha_hasta)
+                        html += `<p class="text-xs mt-1">Periodo: ${data.fecha_desde} a ${data.fecha_hasta}</p>`;
+                    if (data.total_encontrados !== undefined)
+                        html += `<p class="text-xs">Facturas encontradas: ${data.total_encontrados}</p>`;
+                    if (data.status === 'ok' && data.total_encontrados > 0 && data.archivos_generados) {
+                        html += `<div class="text-xs mt-2 pt-2 border-t border-current/20">
+                            <p>CSV: ${data.archivos_generados.csv}</p>
+                            <p>JSON: ${data.archivos_generados.json}</p></div>`;
+                    }
+                    if (data.accion_sugerida) html += `<p class="text-xs mt-1">${data.accion_sugerida}</p>`;
+                    html += '</div>';
+                    resultado.innerHTML = html;
+                } else {
+                    let html = `<div class="glass rounded-xl p-4 border border-red-200 text-red-700 bg-red-50">
+                        <p class="text-sm font-medium">Error al descargar facturas</p>
+                        <p class="text-xs mt-1">${data.error}</p>`;
+                    if (data.detalle) html += `<p class="text-xs">${data.detalle}</p>`;
+                    html += '</div>';
+                    resultado.innerHTML = html;
+                }
+            })
+            .catch(error => {
+                btn.disabled = false;
+                btn.textContent = 'Descargar Facturas AFIP';
+                resultado.innerHTML = `<div class="glass rounded-xl p-4 border border-red-200 text-red-700 bg-red-50">
+                    <p class="text-sm font-medium">Error de conexion</p>
+                    <p class="text-xs mt-1">${error.message || error}</p></div>`;
+            });
+    };
+    </script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+{% extends "superadmin_base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-white">Dashboard</h1>
+    <p class="text-slate-400 text-sm mt-1">Resumen general del sistema</p>
+</div>
+
+{# ── KPI Cards ── #}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <div class="text-slate-400 text-xs uppercase tracking-wider font-semibold">Estudios Activos</div>
+        <div class="text-3xl font-bold text-white mt-2">{{ kpis.activos }}</div>
+        <div class="text-xs text-slate-500 mt-1">de {{ kpis.total }} registrados</div>
+    </div>
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <div class="text-slate-400 text-xs uppercase tracking-wider font-semibold">Membresias Vencidas</div>
+        <div class="text-3xl font-bold {{ 'text-red-400' if kpis.vencidos > 0 else 'text-white' }} mt-2">{{ kpis.vencidos }}</div>
+        <div class="text-xs text-slate-500 mt-1">requieren atencion</div>
+    </div>
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <div class="text-slate-400 text-xs uppercase tracking-wider font-semibold">Usuarios Totales</div>
+        <div class="text-3xl font-bold text-white mt-2">{{ kpis.total_usuarios }}</div>
+        <div class="text-xs text-slate-500 mt-1">en todos los estudios</div>
+    </div>
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <div class="text-slate-400 text-xs uppercase tracking-wider font-semibold">Consultas este Mes</div>
+        <div class="text-3xl font-bold text-white mt-2">{{ kpis.consultas_mes }}</div>
+        <div class="text-xs text-slate-500 mt-1">total del sistema</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+    {# ── Estudios por plan ── #}
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Distribucion por Plan</h3>
+        <div class="space-y-3">
+            {% for plan in planes %}
+            <div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="font-medium
+                        {% if plan.plan == 'enterprise' %}text-purple-400
+                        {% elif plan.plan == 'profesional' %}text-blue-400
+                        {% elif plan.plan == 'basico' %}text-green-400
+                        {% else %}text-yellow-400{% endif %}">
+                        {{ plan.plan|upper }}
+                    </span>
+                    <span class="text-slate-400">{{ plan.cantidad }}</span>
+                </div>
+                <div class="w-full bg-slate-700 rounded-full h-2">
+                    <div class="h-2 rounded-full
+                        {% if plan.plan == 'enterprise' %}bg-purple-500
+                        {% elif plan.plan == 'profesional' %}bg-blue-500
+                        {% elif plan.plan == 'basico' %}bg-green-500
+                        {% else %}bg-yellow-500{% endif %}"
+                        style="width: {{ (plan.cantidad / kpis.total * 100) if kpis.total > 0 else 0 }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# ── Ultimos estudios registrados ── #}
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Ultimos Estudios</h3>
+        {% if recientes %}
+        <div class="space-y-3">
+            {% for e in recientes %}
+            <a href="{{ url_for('superadmin_detalle_estudio', estudio_id=e.id) }}"
+               class="flex items-center justify-between p-3 rounded-lg hover:bg-slate-700/50 transition group">
+                <div>
+                    <div class="text-sm font-medium text-white group-hover:text-blue-300 transition">{{ e.nombre }}</div>
+                    <div class="text-xs text-slate-500">{{ e.email }}</div>
+                </div>
+                <div class="text-right">
+                    <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold
+                        {% if e.plan == 'enterprise' %}bg-purple-500/20 text-purple-400
+                        {% elif e.plan == 'profesional' %}bg-blue-500/20 text-blue-400
+                        {% elif e.plan == 'basico' %}bg-green-500/20 text-green-400
+                        {% else %}bg-yellow-500/20 text-yellow-400{% endif %}">
+                        {{ e.plan|upper }}
+                    </span>
+                    <div class="text-[10px] text-slate-600 mt-1">{{ e.created_at.strftime('%d/%m/%Y') if e.created_at else '' }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-500">No hay estudios registrados.</p>
+        {% endif %}
+    </div>
+
+    {# ── Membresias por vencer (proximos 15 dias) ── #}
+    <div class="bg-slate-800/60 border border-white/10 rounded-xl p-5 lg:col-span-2">
+        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Membresias por Vencer (proximos 15 dias)</h3>
+        {% if por_vencer %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-slate-500 text-xs uppercase tracking-wider">
+                        <th class="text-left pb-2 font-medium">Estudio</th>
+                        <th class="text-left pb-2 font-medium">Plan</th>
+                        <th class="text-left pb-2 font-medium">Vencimiento</th>
+                        <th class="text-center pb-2 font-medium">Dias restantes</th>
+                        <th class="text-right pb-2 font-medium">Accion</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-700/50">
+                    {% for e in por_vencer %}
+                    {% set dias = (e.membresia_hasta - hoy).days %}
+                    <tr>
+                        <td class="py-2.5 text-white font-medium">{{ e.nombre }}</td>
+                        <td class="py-2.5">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold
+                                {% if e.plan == 'enterprise' %}bg-purple-500/20 text-purple-400
+                                {% elif e.plan == 'profesional' %}bg-blue-500/20 text-blue-400
+                                {% elif e.plan == 'basico' %}bg-green-500/20 text-green-400
+                                {% else %}bg-yellow-500/20 text-yellow-400{% endif %}">
+                                {{ e.plan|upper }}
+                            </span>
+                        </td>
+                        <td class="py-2.5 {{ 'text-red-400' if dias <= 0 else 'text-yellow-400' if dias <= 5 else 'text-slate-300' }}">
+                            {{ e.membresia_hasta.strftime('%d/%m/%Y') }}
+                        </td>
+                        <td class="py-2.5 text-center">
+                            {% if dias <= 0 %}
+                            <span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-xs font-bold">VENCIDO</span>
+                            {% elif dias <= 5 %}
+                            <span class="text-yellow-400 font-bold">{{ dias }}d</span>
+                            {% else %}
+                            <span class="text-slate-400">{{ dias }}d</span>
+                            {% endif %}
+                        </td>
+                        <td class="py-2.5 text-right">
+                            <a href="{{ url_for('superadmin_detalle_estudio', estudio_id=e.id) }}"
+                               class="text-blue-400 hover:text-blue-300 text-xs font-medium">Ver detalle</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-sm text-slate-500">No hay membresias por vencer.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
