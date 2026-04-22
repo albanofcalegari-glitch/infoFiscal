@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Padrón ARCA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255,255,255,0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .glass-dark {
+            background: rgba(15,23,42,0.85);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+
+    <!-- Background -->
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80"
+             alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Padrón ARCA</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8">
+
+        <!-- Search form -->
+        <div class="glass rounded-xl shadow-xl p-6 mb-6">
+            <h2 class="text-lg font-bold text-slate-800 mb-4">Consultar contribuyente</h2>
+            <form id="formPadron" class="flex flex-col sm:flex-row gap-3">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="flex-1">
+                    <input type="text" id="cuitInput" name="cuit"
+                           placeholder="Ingrese CUIT (ej: 20-12345678-9)"
+                           class="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                           maxlength="13" autofocus required>
+                </div>
+                <button type="submit" id="btnConsultar"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-semibold transition flex items-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    Consultar
+                </button>
+            </form>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="hidden text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-400 border-t-transparent"></div>
+            <p class="text-white mt-3">Consultando padrón ARCA...</p>
+        </div>
+
+        <!-- Error -->
+        <div id="errorBox" class="hidden glass rounded-xl shadow-xl p-6 mb-6 border-l-4 border-red-500">
+            <p class="text-red-700 font-semibold" id="errorMsg"></p>
+        </div>
+
+        <!-- Results -->
+        <div id="resultados" class="hidden space-y-4">
+
+            <!-- Header card -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-2xl font-bold text-slate-800" id="resRazonSocial"></h3>
+                        <p class="text-lg text-slate-500 mt-1" id="resCuit"></p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span id="resEstado" class="px-3 py-1 rounded-full text-xs font-bold uppercase"></span>
+                        <span id="resTipoPersona" class="px-3 py-1 rounded-full text-xs font-bold uppercase bg-slate-100 text-slate-600"></span>
+                        <span id="resCondicionIva" class="px-3 py-1 rounded-full text-xs font-bold uppercase"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Details grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <!-- Domicilio -->
+                <div class="glass rounded-xl shadow-xl p-6">
+                    <h4 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Domicilio Fiscal</h4>
+                    <p class="text-slate-800" id="resDomicilio"></p>
+                    <div class="mt-3 grid grid-cols-2 gap-2 text-sm" id="resDomicilioDetalle"></div>
+                </div>
+
+                <!-- Monotributo / Impuestos -->
+                <div class="glass rounded-xl shadow-xl p-6">
+                    <h4 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Impuestos inscriptos</h4>
+                    <div id="resImpuestos" class="space-y-2"></div>
+                    <div id="resMonotributo" class="hidden mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <span class="text-green-700 font-semibold">Categoría Monotributo: </span>
+                        <span id="resCategoriaMT" class="text-green-800 font-bold text-lg"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actividades -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h4 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Actividades económicas</h4>
+                <div id="resActividades" class="space-y-2"></div>
+                <p id="resSinActividades" class="hidden text-slate-500 italic">No se informan actividades</p>
+            </div>
+
+            <!-- Metadata -->
+            <div class="text-center text-white/40 text-xs py-2">
+                <span id="resFuente"></span> &mdash; <span id="resFecha"></span>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+    const form = document.getElementById('formPadron');
+    const input = document.getElementById('cuitInput');
+    const loading = document.getElementById('loading');
+    const errorBox = document.getElementById('errorBox');
+    const resultados = document.getElementById('resultados');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const cuit = input.value.trim();
+        if (!cuit) return;
+
+        loading.classList.remove('hidden');
+        errorBox.classList.add('hidden');
+        resultados.classList.add('hidden');
+
+        try {
+            const resp = await fetch(`/padron/consultar?cuit=${encodeURIComponent(cuit)}`);
+            const data = await resp.json();
+
+            loading.classList.add('hidden');
+
+            if (data.error) {
+                document.getElementById('errorMsg').textContent = data.error;
+                errorBox.classList.remove('hidden');
+                return;
+            }
+
+            renderResultado(data);
+            resultados.classList.remove('hidden');
+
+        } catch (err) {
+            loading.classList.add('hidden');
+            document.getElementById('errorMsg').textContent = 'Error de conexión: ' + err.message;
+            errorBox.classList.remove('hidden');
+        }
+    });
+
+    function renderResultado(d) {
+        document.getElementById('resRazonSocial').textContent = d.razon_social || '-';
+        document.getElementById('resCuit').textContent = d.cuit || '-';
+        document.getElementById('resTipoPersona').textContent = d.tipo_persona || '-';
+
+        // Estado
+        const estado = document.getElementById('resEstado');
+        const estadoVal = (d.estado || 'ACTIVO').toUpperCase();
+        estado.textContent = estadoVal;
+        if (estadoVal === 'ACTIVO' || estadoVal === 'ACTIVE') {
+            estado.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700';
+        } else {
+            estado.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-red-100 text-red-700';
+        }
+
+        // Condición IVA
+        const condIva = document.getElementById('resCondicionIva');
+        condIva.textContent = d.condicion_iva || '-';
+        if ((d.condicion_iva || '').includes('Monotributo')) {
+            condIva.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700';
+        } else if ((d.condicion_iva || '').includes('Inscripto')) {
+            condIva.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700';
+        } else if ((d.condicion_iva || '').includes('Exento')) {
+            condIva.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-amber-100 text-amber-700';
+        } else {
+            condIva.className = 'px-3 py-1 rounded-full text-xs font-bold uppercase bg-slate-100 text-slate-600';
+        }
+
+        // Domicilio
+        document.getElementById('resDomicilio').textContent = d.domicilio_fiscal || 'No informado';
+        const detalle = d.domicilio_detalle || {};
+        const detalleDiv = document.getElementById('resDomicilioDetalle');
+        detalleDiv.innerHTML = '';
+        if (detalle.direccion) detalleDiv.innerHTML += `<div><span class="text-slate-400">Dirección:</span> ${detalle.direccion}</div>`;
+        if (detalle.localidad) detalleDiv.innerHTML += `<div><span class="text-slate-400">Localidad:</span> ${detalle.localidad}</div>`;
+        if (detalle.provincia) detalleDiv.innerHTML += `<div><span class="text-slate-400">Provincia:</span> ${detalle.provincia}</div>`;
+        if (detalle.codigo_postal) detalleDiv.innerHTML += `<div><span class="text-slate-400">CP:</span> ${detalle.codigo_postal}</div>`;
+
+        // Impuestos
+        const impDiv = document.getElementById('resImpuestos');
+        impDiv.innerHTML = '';
+        (d.impuestos || []).forEach(imp => {
+            const el = document.createElement('div');
+            el.className = 'flex items-center gap-2 text-sm';
+            el.innerHTML = `
+                <span class="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0"></span>
+                <span class="text-slate-700">${imp.descripcion || 'Imp. ' + imp.id}</span>
+                ${imp.periodo ? `<span class="text-slate-400 text-xs">(desde ${imp.periodo})</span>` : ''}
+            `;
+            impDiv.appendChild(el);
+        });
+        if (!d.impuestos || d.impuestos.length === 0) {
+            impDiv.innerHTML = '<p class="text-slate-500 italic text-sm">Sin impuestos registrados</p>';
+        }
+
+        // Monotributo
+        const mtDiv = document.getElementById('resMonotributo');
+        if (d.categoria_monotributo) {
+            mtDiv.classList.remove('hidden');
+            document.getElementById('resCategoriaMT').textContent = d.categoria_monotributo;
+        } else {
+            mtDiv.classList.add('hidden');
+        }
+
+        // Actividades
+        const actDiv = document.getElementById('resActividades');
+        const sinAct = document.getElementById('resSinActividades');
+        actDiv.innerHTML = '';
+        if (d.actividades && d.actividades.length > 0) {
+            sinAct.classList.add('hidden');
+            d.actividades.forEach((act, i) => {
+                const el = document.createElement('div');
+                el.className = 'flex items-start gap-3 p-2 rounded-lg ' + (i === 0 ? 'bg-blue-50 border border-blue-200' : 'hover:bg-slate-50');
+                el.innerHTML = `
+                    <span class="text-xs font-mono text-slate-400 mt-0.5 flex-shrink-0">${act.codigo}</span>
+                    <div>
+                        <span class="text-slate-800 text-sm">${act.descripcion}</span>
+                        ${i === 0 ? '<span class="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">Principal</span>' : ''}
+                        ${act.periodo ? `<span class="text-slate-400 text-xs ml-1">(desde ${act.periodo})</span>` : ''}
+                    </div>
+                `;
+                actDiv.appendChild(el);
+            });
+        } else {
+            sinAct.classList.remove('hidden');
+        }
+
+        // Fuente y fecha
+        document.getElementById('resFuente').textContent = d.fuente || '';
+        document.getElementById('resFecha').textContent = d.consultado_at ? new Date(d.consultado_at).toLocaleString('es-AR') : '';
+    }
+
+    // Auto-format CUIT
+    input.addEventListener('input', () => {
+        let v = input.value.replace(/[^0-9]/g, '');
+        if (v.length > 11) v = v.slice(0, 11);
+        if (v.length > 2 && v.length <= 10) {
+            v = v.slice(0, 2) + '-' + v.slice(2);
+        } else if (v.length > 10) {
+            v = v.slice(0, 2) + '-' + v.slice(2, 10) + '-' + v.slice(10);
+        }
+        input.value = v;
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Libro IVA Digital</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('liquidacion_iva', periodo=periodo) }}" class="text-white/60 hover:text-white transition text-sm">&larr; Liquidacion</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Libro IVA Digital — {{ periodo }}</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Ventas -->
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h3 class="text-sm font-bold text-red-500 uppercase tracking-wider mb-3">Libro IVA Ventas ({{ libro.ventas|length }} comprobantes)</h3>
+            {% if libro.ventas %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-2 py-2 text-left">Fecha</th>
+                            <th class="px-2 py-2 text-left">Tipo</th>
+                            <th class="px-2 py-2 text-left">Numero</th>
+                            <th class="px-2 py-2 text-left">Receptor</th>
+                            <th class="px-2 py-2 text-right">Neto</th>
+                            <th class="px-2 py-2 text-right">IVA</th>
+                            <th class="px-2 py-2 text-right">Total</th>
+                            <th class="px-2 py-2 text-left">CAE</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for v in libro.ventas %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-2 py-1.5">{{ v.fecha_emision }}</td>
+                            <td class="px-2 py-1.5">{{ v.tipo_comprobante }}</td>
+                            <td class="px-2 py-1.5 font-mono">{{ v.punto_venta }}-{{ "%08d"|format(v.numero_desde) }}</td>
+                            <td class="px-2 py-1.5">{{ v.receptor_nombre or v.nro_doc_receptor or '-' }}</td>
+                            <td class="px-2 py-1.5 text-right">${{ "{:,.2f}".format(v.importe_neto) }}</td>
+                            <td class="px-2 py-1.5 text-right">${{ "{:,.2f}".format(v.importe_iva) }}</td>
+                            <td class="px-2 py-1.5 text-right font-medium">${{ "{:,.2f}".format(v.importe_total) }}</td>
+                            <td class="px-2 py-1.5 font-mono">{{ v.cae or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-slate-500 text-sm italic">No hay comprobantes de venta en este periodo.</p>
+            {% endif %}
+        </div>
+
+        <!-- Compras -->
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h3 class="text-sm font-bold text-green-600 uppercase tracking-wider mb-3">Libro IVA Compras ({{ libro.compras|length }} comprobantes)</h3>
+            {% if libro.compras %}
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-2 py-2 text-left">Fecha</th>
+                            <th class="px-2 py-2 text-left">Tipo</th>
+                            <th class="px-2 py-2 text-left">Numero</th>
+                            <th class="px-2 py-2 text-left">Proveedor</th>
+                            <th class="px-2 py-2 text-right">Neto</th>
+                            <th class="px-2 py-2 text-right">IVA 21%</th>
+                            <th class="px-2 py-2 text-right">IVA 10.5%</th>
+                            <th class="px-2 py-2 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for c in libro.compras %}
+                        <tr class="hover:bg-slate-50">
+                            <td class="px-2 py-1.5">{{ c.fecha_emision }}</td>
+                            <td class="px-2 py-1.5">{{ c.tipo_comprobante }}</td>
+                            <td class="px-2 py-1.5 font-mono">{{ c.punto_venta }}-{{ "%08d"|format(c.numero) }}</td>
+                            <td class="px-2 py-1.5">{{ c.emisor_nombre or c.cuit_emisor }}</td>
+                            <td class="px-2 py-1.5 text-right">${{ "{:,.2f}".format(c.importe_neto) }}</td>
+                            <td class="px-2 py-1.5 text-right">${{ "{:,.2f}".format(c.iva_21) }}</td>
+                            <td class="px-2 py-1.5 text-right">${{ "{:,.2f}".format(c.iva_105) }}</td>
+                            <td class="px-2 py-1.5 text-right font-medium">${{ "{:,.2f}".format(c.importe_total) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-slate-500 text-sm italic">No hay comprobantes de compra en este periodo.</p>
+            {% endif %}
+        </div>
+
+    </main>
+</body>
+</html>

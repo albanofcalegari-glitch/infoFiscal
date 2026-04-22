@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Cobros y Pagos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>.glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); }</style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Cobros y Pagos</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+            <div class="glass rounded-xl p-4 border-l-4 {{ 'border-green-500' if cat == 'success' else 'border-red-500' }}">
+                <p class="{{ 'text-green-700' if cat == 'success' else 'text-red-700' }}">{{ msg }}</p>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <!-- Tabs -->
+        <div class="glass rounded-xl shadow-xl p-2 flex gap-2">
+            <a href="{{ url_for('cobros_pagos', tipo='cliente') }}"
+               class="flex-1 text-center py-2 rounded-lg text-sm font-medium transition {{ 'bg-blue-600 text-white' if tipo == 'cliente' else 'text-slate-600 hover:bg-slate-100' }}">
+                Clientes (me deben)
+            </a>
+            <a href="{{ url_for('cobros_pagos', tipo='proveedor') }}"
+               class="flex-1 text-center py-2 rounded-lg text-sm font-medium transition {{ 'bg-blue-600 text-white' if tipo == 'proveedor' else 'text-slate-600 hover:bg-slate-100' }}">
+                Proveedores (les debo)
+            </a>
+        </div>
+
+        <!-- New account -->
+        <details class="glass rounded-xl shadow-xl p-6">
+            <summary class="text-sm font-bold text-slate-600 cursor-pointer">+ Nueva cuenta corriente</summary>
+            <form action="{{ url_for('cc_crear') }}" method="POST" class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="tipo" value="{{ tipo }}">
+                <div>
+                    <label class="block text-sm text-slate-600 mb-1">Nombre</label>
+                    <input type="text" name="nombre" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-600 mb-1">CUIT</label>
+                    <input type="text" name="cuit" placeholder="Opcional" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                </div>
+                <div class="flex items-end">
+                    <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm w-full">
+                        Crear cuenta
+                    </button>
+                </div>
+            </form>
+        </details>
+
+        <!-- Accounts list -->
+        {% if cuentas %}
+        <div class="space-y-3">
+            {% for cc in cuentas %}
+            <div class="glass rounded-xl shadow-xl p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div>
+                        <span class="font-bold text-slate-800">{{ cc.nombre }}</span>
+                        {% if cc.cuit %}<span class="text-slate-400 text-sm ml-2">{{ cc.cuit }}</span>{% endif %}
+                    </div>
+                    <div class="text-xl font-bold {{ 'text-red-600' if cc.saldo > 0 else 'text-green-600' if cc.saldo < 0 else 'text-slate-400' }}">
+                        ${{ "{:,.2f}".format(cc.saldo|abs) }}
+                        {% if cc.saldo > 0 %}<span class="text-xs font-normal text-red-400">debe</span>
+                        {% elif cc.saldo < 0 %}<span class="text-xs font-normal text-green-400">a favor</span>{% endif %}
+                    </div>
+                </div>
+
+                <!-- Quick movement form -->
+                <form action="{{ url_for('cc_movimiento') }}" method="POST" class="flex flex-wrap gap-2 items-end">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="cuenta_id" value="{{ cc.id }}">
+                    <select name="tipo_mov" class="px-2 py-1.5 rounded border border-slate-300 text-xs">
+                        <option value="factura">Factura</option>
+                        <option value="cobro">Cobro</option>
+                        <option value="pago">Pago</option>
+                        <option value="nota_credito">NC</option>
+                        <option value="ajuste">Ajuste</option>
+                    </select>
+                    <input type="date" name="fecha" required class="px-2 py-1.5 rounded border border-slate-300 text-xs">
+                    <input type="number" name="monto" step="0.01" min="0" required placeholder="Monto"
+                           class="px-2 py-1.5 rounded border border-slate-300 text-xs w-28">
+                    <input type="text" name="descripcion" placeholder="Detalle" class="px-2 py-1.5 rounded border border-slate-300 text-xs flex-1">
+                    <button type="submit" class="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium">Registrar</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass rounded-xl shadow-xl p-8 text-center text-slate-500">
+            No hay cuentas corrientes de {{ 'clientes' if tipo == 'cliente' else 'proveedores' }}. Cree una usando el formulario de arriba.
+        </div>
+        {% endif %}
+
+        <!-- Aging report -->
+        {% if aging %}
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Reporte de antiguedad de saldos</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-3 py-2 text-left">Nombre</th>
+                            <th class="px-3 py-2 text-right">Saldo</th>
+                            <th class="px-3 py-2 text-center">Dias</th>
+                            <th class="px-3 py-2 text-center">Antiguedad</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for a in aging %}
+                        <tr>
+                            <td class="px-3 py-2">{{ a.nombre }}</td>
+                            <td class="px-3 py-2 text-right font-medium">${{ "{:,.2f}".format(a.saldo) }}</td>
+                            <td class="px-3 py-2 text-center">{{ a.dias }}d</td>
+                            <td class="px-3 py-2 text-center">
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium
+                                    {% if a.bucket == 'corriente' %}bg-green-100 text-green-700
+                                    {% elif a.bucket == '30_dias' %}bg-yellow-100 text-yellow-700
+                                    {% elif a.bucket == '60_dias' %}bg-orange-100 text-orange-700
+                                    {% else %}bg-red-100 text-red-700{% endif %}">
+                                    {{ a.bucket|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+    </main>
+</body>
+</html>

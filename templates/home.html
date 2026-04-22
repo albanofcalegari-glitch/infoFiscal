@@ -34,7 +34,7 @@
     </header>
 
     <!-- Main -->
-    <main class="relative z-10 max-w-2xl mx-auto px-4 py-10">
+    <main class="relative z-10 max-w-4xl mx-auto px-4 py-10">
 
         {% set user = g.get('user') %}
 
@@ -64,7 +64,7 @@
         <h2 class="text-2xl font-bold text-white mb-6 text-center">Panel principal</h2>
 
         <!-- Navigation cards -->
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <a href="{{ url_for('nuevo_cliente') }}"
                class="glass rounded-xl p-6 border border-white/40 hover:border-blue-400 hover:shadow-lg transition group">
                 <div class="text-lg font-semibold text-slate-800 group-hover:text-blue-600 transition">Nuevo cliente</div>
@@ -75,9 +75,49 @@
                 <div class="text-lg font-semibold text-slate-800 group-hover:text-blue-600 transition">Consultar facturas</div>
                 <div class="text-sm text-slate-500 mt-1">Todos los servicios ARCA</div>
             </a>
+            <a href="{{ url_for('padron_arca') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-green-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-green-600 transition">Padron ARCA</div>
+                <div class="text-sm text-slate-500 mt-1">Consultar datos de contribuyentes por CUIT</div>
+            </a>
+            <a href="{{ url_for('emitir_factura') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-indigo-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-indigo-600 transition">Emitir factura</div>
+                <div class="text-sm text-slate-500 mt-1">Facturacion electronica con CAE</div>
+            </a>
+            <a href="{{ url_for('liquidacion_iva') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-red-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-red-600 transition">Liquidacion IVA</div>
+                <div class="text-sm text-slate-500 mt-1">Posicion mensual y Libro IVA Digital</div>
+            </a>
+            <a href="{{ url_for('monotributo_monitor') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-emerald-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-emerald-600 transition">Monotributo</div>
+                <div class="text-sm text-slate-500 mt-1">Monitor de categorias y alertas</div>
+            </a>
+            <a href="{{ url_for('retenciones_lista') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-orange-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-orange-600 transition">Retenciones</div>
+                <div class="text-sm text-slate-500 mt-1">Calculadora y registro</div>
+            </a>
+            <a href="{{ url_for('cobros_pagos') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-cyan-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-cyan-600 transition">Cobros y Pagos</div>
+                <div class="text-sm text-slate-500 mt-1">Cuentas corrientes y aging</div>
+            </a>
+            <a href="{{ url_for('iibb_dashboard') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-teal-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-teal-600 transition">Ingresos Brutos</div>
+                <div class="text-sm text-slate-500 mt-1">CM03/CM05 para SIFERE</div>
+            </a>
+            <a href="{{ url_for('documentos_lista') }}"
+               class="glass rounded-xl p-6 border border-white/40 hover:border-purple-400 hover:shadow-lg transition group">
+                <div class="text-lg font-semibold text-slate-800 group-hover:text-purple-600 transition">Documentos</div>
+                <div class="text-sm text-slate-500 mt-1">Gestion documental y adjuntos</div>
+            </a>
             {% if user and user.rol in ['admin', 'contador'] %}
             <a href="{{ url_for('config_afip') }}"
-               class="glass rounded-xl p-6 border border-white/40 hover:border-amber-400 hover:shadow-lg transition group col-span-2 text-center">
+               class="glass rounded-xl p-6 border border-white/40 hover:border-amber-400 hover:shadow-lg transition group">
                 <div class="text-lg font-semibold text-slate-800 group-hover:text-amber-600 transition">Configuracion AFIP</div>
                 <div class="text-sm text-slate-500 mt-1">Certificados digitales y credenciales ARCA</div>
             </a>

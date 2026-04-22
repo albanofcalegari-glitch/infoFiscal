@@ -2307,6 +2307,746 @@ def consultar_rcel():
             error=str(e))
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# LIQUIDACIÓN IVA — posición mensual y Libro IVA Digital
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/iva')
+@login_required
+@role_required('admin', 'contador')
+def liquidacion_iva():
+    """Dashboard de liquidación de IVA mensual."""
+    from src.liquidacion_iva import calcular_posicion_iva
+    from decimal import Decimal
+    from datetime import date
+
+    periodo = request.args.get('periodo', date.today().strftime('%Y-%m'))
+    saldo_anterior = Decimal(request.args.get('saldo_anterior', '0'))
+    estudio_id = g.user['estudio_id']
+
+    posicion = None
+    try:
+        with get_cursor() as cur:
+            posicion = calcular_posicion_iva(cur, estudio_id, periodo,
+                                             saldo_anterior=saldo_anterior)
+    except Exception as e:
+        flash(f'Error calculando IVA: {e}', 'error')
+
+    pos_dict = None
+    if posicion:
+        pos_dict = {
+            'periodo': posicion.periodo,
+            'ventas_gravadas': float(posicion.ventas_gravadas),
+            'ventas_iva_105': float(posicion.ventas_iva_105),
+            'ventas_iva_21': float(posicion.ventas_iva_21),
+            'ventas_iva_27': float(posicion.ventas_iva_27),
+            'ventas_exentas': float(posicion.ventas_exentas),
+            'ventas_no_gravadas': float(posicion.ventas_no_gravadas),
+            'total_debito': float(posicion.total_debito),
+            'cant_ventas': posicion.cant_ventas,
+            'compras_gravadas': float(posicion.compras_gravadas),
+            'compras_iva_105': float(posicion.compras_iva_105),
+            'compras_iva_21': float(posicion.compras_iva_21),
+            'compras_iva_27': float(posicion.compras_iva_27),
+            'compras_exentas': float(posicion.compras_exentas),
+            'compras_no_gravadas': float(posicion.compras_no_gravadas),
+            'total_credito': float(posicion.total_credito),
+            'cant_compras': posicion.cant_compras,
+            'saldo_tecnico': float(posicion.saldo_tecnico),
+            'saldo_anterior': float(posicion.saldo_anterior),
+            'resultado': float(posicion.resultado),
+        }
+
+    return render_template('liquidacion_iva.html',
+                         posicion=pos_dict, periodo=periodo,
+                         saldo_anterior=float(saldo_anterior))
+
+
+@app.route('/iva/libro')
+@login_required
+@role_required('admin', 'contador')
+def libro_iva_digital():
+    """Libro IVA Digital — detalle de comprobantes del período."""
+    from src.liquidacion_iva import generar_libro_iva_digital
+    from datetime import date
+
+    periodo = request.args.get('periodo', date.today().strftime('%Y-%m'))
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        libro = generar_libro_iva_digital(cur, estudio_id, periodo)
+
+    return render_template('libro_iva.html', libro=libro, periodo=periodo)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMISIÓN DE FACTURAS — solicitud de CAE via WSFEv1
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/emitir-factura', methods=['GET'])
+@login_required
+@role_required('admin', 'contador')
+def emitir_factura():
+    """Formulario de emisión de factura electrónica."""
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT ce.*, ea.solicitante_cuit
+            FROM comprobantes_emitidos ce
+            JOIN estudios_afip ea ON ea.estudio_id = ce.estudio_id AND ea.activo = TRUE
+            WHERE ce.estudio_id = %s
+            ORDER BY ce.created_at DESC LIMIT 10
+        """, (estudio_id,))
+        ultimos = cur.fetchall()
+
+    from src.emision_factura import TIPOS_COMPROBANTE
+    for u in ultimos:
+        u['tipo_desc'] = TIPOS_COMPROBANTE.get(u['tipo_comprobante'], '')
+
+    return render_template('emitir_factura.html', resultado=None, ultimos=ultimos)
+
+
+@app.route('/emitir-factura', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def emitir_factura_post():
+    """Procesar emisión de factura y solicitar CAE."""
+    from src.emision_factura import DatosFactura, ItemFactura, solicitar_cae, TIPOS_COMPROBANTE
+    from decimal import Decimal
+    from datetime import date, datetime
+    import json
+
+    estudio_id = g.user['estudio_id']
+
+    # Obtener credenciales AFIP del estudio
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM estudios_afip
+            WHERE estudio_id = %s AND activo = TRUE AND ambiente = 'prod'
+            LIMIT 1
+        """, (estudio_id,))
+        afip_config = cur.fetchone()
+
+    if not afip_config:
+        flash('No hay configuración AFIP activa. Configure certificados primero.', 'error')
+        return redirect(url_for('emitir_factura'))
+
+    # Parsear items
+    item_count = int(request.form.get('item_count', 0))
+    items = []
+    for i in range(item_count):
+        desc = request.form.get(f'item_desc_{i}', '').strip()
+        if not desc:
+            continue
+        items.append(ItemFactura(
+            descripcion=desc,
+            cantidad=Decimal(request.form.get(f'item_cant_{i}', '1')),
+            precio_unitario=Decimal(request.form.get(f'item_precio_{i}', '0')),
+            alicuota_iva_id=int(request.form.get(f'item_iva_{i}', '5')),
+        ))
+
+    if not items:
+        flash('Debe agregar al menos un item.', 'error')
+        return redirect(url_for('emitir_factura'))
+
+    # Parsear fechas
+    def parse_date(name):
+        val = request.form.get(name, '').strip()
+        if val:
+            return datetime.strptime(val, '%Y-%m-%d').date()
+        return None
+
+    datos = DatosFactura(
+        tipo_comprobante=int(request.form.get('tipo_comprobante', 11)),
+        punto_venta=int(request.form.get('punto_venta', 1)),
+        concepto=int(request.form.get('concepto', 2)),
+        tipo_doc_receptor=int(request.form.get('tipo_doc_receptor', 80)),
+        nro_doc_receptor=request.form.get('nro_doc_receptor', '').replace('-', '').replace(' ', ''),
+        receptor_nombre=request.form.get('receptor_nombre', '').strip(),
+        items=items,
+        fecha_serv_desde=parse_date('fecha_serv_desde'),
+        fecha_serv_hasta=parse_date('fecha_serv_hasta'),
+        fecha_vto_pago=parse_date('fecha_vto_pago'),
+    )
+
+    # Crear cliente WSFEv1 con credenciales del estudio
+    import tempfile
+    cert_tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.crt')
+    key_tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.key')
+
+    try:
+        cert_tmp.write(afip_config['cert_blob'])
+        cert_tmp.close()
+        key_tmp.write(afip_config['key_blob'])
+        key_tmp.close()
+
+        import sys
+        root_dir = Path(__file__).parent.parent
+        if str(root_dir) not in sys.path:
+            sys.path.insert(0, str(root_dir))
+        from wsfev1_client import WSFEv1Client
+
+        client = WSFEv1Client(cert_tmp.name, key_tmp.name, ambiente='prod')
+        resultado = solicitar_cae(client, afip_config['solicitante_cuit'], datos)
+
+        # Guardar en DB
+        items_json = json.dumps([
+            {'desc': it.descripcion, 'cant': float(it.cantidad),
+             'precio': float(it.precio_unitario), 'iva_id': it.alicuota_iva_id}
+            for it in items
+        ])
+
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO comprobantes_emitidos
+                    (estudio_id, cuit_emisor, cuit_receptor, receptor_nombre,
+                     tipo_doc_receptor, nro_doc_receptor,
+                     tipo_comprobante, punto_venta, numero_desde, numero_hasta,
+                     fecha_emision, importe_total, importe_neto, importe_iva,
+                     concepto, fecha_serv_desde, fecha_serv_hasta, fecha_vto_pago,
+                     cae, cae_vto, estado, observaciones, items_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                estudio_id, afip_config['solicitante_cuit'],
+                datos.nro_doc_receptor, datos.receptor_nombre,
+                datos.tipo_doc_receptor, datos.nro_doc_receptor,
+                datos.tipo_comprobante, datos.punto_venta,
+                resultado['numero'], resultado['numero'],
+                resultado.get('fecha_emision', date.today().strftime('%Y%m%d')),
+                resultado.get('importe_total', 0),
+                resultado.get('importe_neto', 0),
+                resultado.get('importe_iva', 0),
+                datos.concepto, datos.fecha_serv_desde, datos.fecha_serv_hasta,
+                datos.fecha_vto_pago,
+                resultado.get('cae'), resultado.get('cae_vto'),
+                resultado.get('estado', 'R'),
+                json.dumps(resultado.get('observaciones', [])),
+                items_json,
+            ))
+
+        if resultado.get('success'):
+            flash(f'CAE obtenido: {resultado["cae"]}', 'success')
+        else:
+            errores = resultado.get('errores', ['Error desconocido'])
+            flash(f'Comprobante rechazado: {"; ".join(errores)}', 'error')
+
+        # Reload ultimos
+        with get_cursor() as cur:
+            cur.execute("""
+                SELECT * FROM comprobantes_emitidos
+                WHERE estudio_id = %s ORDER BY created_at DESC LIMIT 10
+            """, (estudio_id,))
+            ultimos = cur.fetchall()
+        for u in ultimos:
+            u['tipo_desc'] = TIPOS_COMPROBANTE.get(u['tipo_comprobante'], '')
+
+        return render_template('emitir_factura.html', resultado=resultado, ultimos=ultimos)
+
+    except Exception as e:
+        flash(f'Error al emitir: {str(e)}', 'error')
+        return redirect(url_for('emitir_factura'))
+
+    finally:
+        import os as _os
+        if _os.path.exists(cert_tmp.name):
+            _os.unlink(cert_tmp.name)
+        if _os.path.exists(key_tmp.name):
+            _os.unlink(key_tmp.name)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MONOTRIBUTO — monitor de categorías y alertas
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/monotributo')
+@login_required
+@role_required('admin', 'contador')
+def monotributo_monitor():
+    """Dashboard de monitoreo de monotributistas del estudio."""
+    from src.monotributo import get_todas_categorias, calcular_posicion
+    from decimal import Decimal
+
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT c.id, c.apellido, c.nombres, c.cuit, c.categoria_monotributo,
+                   COALESCE(SUM(mf.monto_facturado), 0) AS facturado_12m,
+                   COUNT(DISTINCT mf.periodo) AS meses_datos
+            FROM clientes c
+            LEFT JOIN monotributo_facturacion mf
+                ON mf.cliente_id = c.id
+                AND mf.periodo >= TO_CHAR(NOW() - INTERVAL '12 months', 'YYYY-MM')
+            WHERE c.estudio_id = %s
+              AND c.condicion_iva = 'Monotributo'
+            GROUP BY c.id
+            ORDER BY c.apellido, c.nombres
+        """, (estudio_id,))
+        clientes_mt = cur.fetchall()
+
+    monitores = []
+    for cli in clientes_mt:
+        cat = cli['categoria_monotributo'] or 'A'
+        status = calcular_posicion(
+            categoria=cat,
+            facturado_12m=Decimal(str(cli['facturado_12m'])),
+            meses_datos=cli['meses_datos'] or 0,
+        )
+        monitores.append({
+            'cliente': cli,
+            'status': {
+                'categoria': status.categoria,
+                'tope_anual': float(status.tope_anual),
+                'facturado_12m': float(status.facturado_12m),
+                'porcentaje': status.porcentaje,
+                'alerta': status.alerta,
+                'categoria_sugerida': status.categoria_sugerida,
+                'meses_datos': status.meses_datos,
+            },
+        })
+
+    categorias = get_todas_categorias()
+    return render_template('monotributo_monitor.html',
+                         monitores=monitores, categorias=categorias)
+
+
+@app.route('/monotributo/registrar', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def monotributo_registrar():
+    """Registrar/actualizar facturación mensual de un monotributista."""
+    estudio_id = g.user['estudio_id']
+    cliente_id = request.form.get('cliente_id', type=int)
+    periodo = request.form.get('periodo', '').strip()  # YYYY-MM
+    monto = request.form.get('monto', '0').strip()
+
+    if not cliente_id or not periodo:
+        flash('Cliente y período son obligatorios.', 'error')
+        return redirect(url_for('monotributo_monitor'))
+
+    try:
+        from decimal import Decimal
+        monto_dec = Decimal(monto.replace('.', '').replace(',', '.'))
+
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO monotributo_facturacion (estudio_id, cliente_id, periodo, monto_facturado, cantidad_comp)
+                VALUES (%s, %s, %s, %s, 1)
+                ON CONFLICT (estudio_id, cliente_id, periodo)
+                DO UPDATE SET monto_facturado = EXCLUDED.monto_facturado, updated_at = NOW()
+            """, (estudio_id, cliente_id, periodo, monto_dec))
+
+        flash(f'Facturación {periodo} registrada correctamente.', 'success')
+    except Exception as e:
+        flash(f'Error al registrar: {e}', 'error')
+
+    return redirect(url_for('monotributo_monitor'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DOCUMENTOS — gestión documental (adjuntos)
+# ══════════════════════════════════════════════════════════════════════════════
+
+UPLOAD_BASE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+
+ALLOWED_EXTENSIONS = {
+    'pdf', 'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp',
+    'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'xml',
+}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/documentos')
+@login_required
+@role_required('admin', 'contador')
+def documentos_lista():
+    """Lista de documentos del estudio."""
+    estudio_id = g.user['estudio_id']
+    cliente_id = request.args.get('cliente_id', type=int)
+
+    with get_cursor() as cur:
+        if cliente_id:
+            cur.execute("""
+                SELECT d.*, c.apellido, c.nombres
+                FROM documentos d
+                LEFT JOIN clientes c ON c.id = d.cliente_id
+                WHERE d.estudio_id = %s AND d.cliente_id = %s
+                ORDER BY d.created_at DESC
+            """, (estudio_id, cliente_id))
+        else:
+            cur.execute("""
+                SELECT d.*, c.apellido, c.nombres
+                FROM documentos d
+                LEFT JOIN clientes c ON c.id = d.cliente_id
+                WHERE d.estudio_id = %s
+                ORDER BY d.created_at DESC
+                LIMIT 100
+            """, (estudio_id,))
+        docs = cur.fetchall()
+
+        cur.execute("""
+            SELECT id, apellido, nombres, cuit FROM clientes
+            WHERE estudio_id = %s ORDER BY apellido, nombres
+        """, (estudio_id,))
+        clientes = cur.fetchall()
+
+    return render_template('documentos.html', documentos=docs, clientes=clientes,
+                         cliente_id=cliente_id)
+
+
+@app.route('/documentos/subir', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def documentos_subir():
+    """Subir un documento."""
+    import uuid
+    from datetime import datetime
+
+    estudio_id = g.user['estudio_id']
+    usuario_id = g.user['id']
+
+    archivo = request.files.get('archivo')
+    if not archivo or not archivo.filename:
+        flash('Debe seleccionar un archivo.', 'error')
+        return redirect(url_for('documentos_lista'))
+
+    if not _allowed_file(archivo.filename):
+        flash(f'Tipo de archivo no permitido. Permitidos: {", ".join(sorted(ALLOWED_EXTENSIONS))}', 'error')
+        return redirect(url_for('documentos_lista'))
+
+    # Leer y verificar tamaño
+    contenido = archivo.read()
+    if len(contenido) > MAX_FILE_SIZE:
+        flash(f'El archivo excede el límite de {MAX_FILE_SIZE // (1024*1024)} MB.', 'error')
+        return redirect(url_for('documentos_lista'))
+
+    cliente_id = request.form.get('cliente_id', type=int) or None
+    categoria = request.form.get('categoria', 'general')
+    descripcion = request.form.get('descripcion', '').strip() or None
+
+    # Generar nombre único y path
+    ext = archivo.filename.rsplit('.', 1)[1].lower()
+    nombre_storage = f"{uuid.uuid4().hex}.{ext}"
+    year = datetime.now().strftime('%Y')
+    ruta_rel = os.path.join(str(estudio_id), year, nombre_storage)
+    ruta_abs = os.path.join(UPLOAD_BASE, ruta_rel)
+
+    os.makedirs(os.path.dirname(ruta_abs), exist_ok=True)
+    with open(ruta_abs, 'wb') as f:
+        f.write(contenido)
+
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO documentos
+                    (estudio_id, cliente_id, nombre_original, nombre_storage,
+                     ruta_storage, mime_type, tamano_bytes, categoria,
+                     descripcion, subido_por)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (estudio_id, cliente_id, archivo.filename, nombre_storage,
+                  ruta_rel, archivo.content_type, len(contenido), categoria,
+                  descripcion, usuario_id))
+
+        flash(f'Documento "{archivo.filename}" subido correctamente.', 'success')
+    except Exception as e:
+        if os.path.exists(ruta_abs):
+            os.remove(ruta_abs)
+        flash(f'Error al guardar documento: {e}', 'error')
+
+    redir = url_for('documentos_lista')
+    if cliente_id:
+        redir += f'?cliente_id={cliente_id}'
+    return redirect(redir)
+
+
+@app.route('/documentos/<int:doc_id>/descargar')
+@login_required
+@role_required('admin', 'contador', 'readonly')
+def documentos_descargar(doc_id):
+    """Descargar un documento."""
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT ruta_storage, nombre_original, mime_type
+            FROM documentos WHERE id = %s AND estudio_id = %s
+        """, (doc_id, estudio_id))
+        doc = cur.fetchone()
+
+    if not doc:
+        flash('Documento no encontrado.', 'error')
+        return redirect(url_for('documentos_lista'))
+
+    ruta_abs = os.path.join(UPLOAD_BASE, doc['ruta_storage'])
+    if not os.path.exists(ruta_abs):
+        flash('El archivo no existe en el servidor.', 'error')
+        return redirect(url_for('documentos_lista'))
+
+    return send_file(ruta_abs, download_name=doc['nombre_original'],
+                     mimetype=doc['mime_type'], as_attachment=True)
+
+
+@app.route('/documentos/<int:doc_id>/eliminar', methods=['POST'])
+@login_required
+@role_required('admin')
+def documentos_eliminar(doc_id):
+    """Eliminar un documento."""
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT ruta_storage, cliente_id FROM documentos
+            WHERE id = %s AND estudio_id = %s
+        """, (doc_id, estudio_id))
+        doc = cur.fetchone()
+
+        if not doc:
+            flash('Documento no encontrado.', 'error')
+            return redirect(url_for('documentos_lista'))
+
+        cur.execute("DELETE FROM documentos WHERE id = %s AND estudio_id = %s",
+                    (doc_id, estudio_id))
+
+    ruta_abs = os.path.join(UPLOAD_BASE, doc['ruta_storage'])
+    if os.path.exists(ruta_abs):
+        os.remove(ruta_abs)
+
+    flash('Documento eliminado.', 'success')
+    redir = url_for('documentos_lista')
+    if doc['cliente_id']:
+        redir += f'?cliente_id={doc["cliente_id"]}'
+    return redirect(redir)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PADRÓN ARCA — consulta de contribuyentes
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/padron')
+@login_required
+@role_required('admin', 'contador')
+def padron_arca():
+    """Página de consulta del Padrón ARCA."""
+    return render_template('padron_arca.html')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RETENCIONES — calculadora y registro
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/retenciones')
+@login_required
+@role_required('admin', 'contador')
+def retenciones_lista():
+    """Módulo de retenciones: calculadora + listado."""
+    estudio_id = g.user['estudio_id']
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT * FROM retenciones
+            WHERE estudio_id = %s
+            ORDER BY fecha DESC LIMIT 50
+        """, (estudio_id,))
+        retenciones = cur.fetchall()
+    return render_template('retenciones.html', retenciones=retenciones)
+
+
+@app.route('/retenciones/registrar', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def retenciones_registrar():
+    """Registrar una retención sufrida o practicada."""
+    estudio_id = g.user['estudio_id']
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO retenciones
+                    (estudio_id, tipo, impuesto, cuit_agente, nombre_agente,
+                     fecha, nro_certificado, importe_retenido, jurisdiccion)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                estudio_id,
+                request.form.get('tipo'),
+                request.form.get('impuesto'),
+                request.form.get('cuit_agente', '').replace('-', '').replace(' ', ''),
+                request.form.get('nombre_agente', '').strip() or None,
+                request.form.get('fecha'),
+                request.form.get('nro_certificado', '').strip() or None,
+                request.form.get('importe_retenido'),
+                request.form.get('jurisdiccion', '').strip() or None,
+            ))
+        flash('Retención registrada.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+    return redirect(url_for('retenciones_lista'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# COBROS Y PAGOS — cuentas corrientes
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/cobros-pagos')
+@login_required
+@role_required('admin', 'contador')
+def cobros_pagos():
+    """Cuentas corrientes y aging."""
+    from src.cobros_pagos import obtener_cuentas, aging_report
+    estudio_id = g.user['estudio_id']
+    tipo = request.args.get('tipo', 'cliente')
+
+    with get_cursor() as cur:
+        cuentas = obtener_cuentas(cur, estudio_id, tipo)
+        aging = aging_report(cur, estudio_id, tipo)
+
+    return render_template('cobros_pagos.html', cuentas=cuentas, aging=aging, tipo=tipo)
+
+
+@app.route('/cobros-pagos/crear', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def cc_crear():
+    """Crear cuenta corriente."""
+    estudio_id = g.user['estudio_id']
+    nombre = request.form.get('nombre', '').strip()
+    cuit = request.form.get('cuit', '').strip().replace('-', '').replace(' ', '') or None
+    tipo = request.form.get('tipo', 'cliente')
+
+    if not nombre:
+        flash('El nombre es obligatorio.', 'error')
+        return redirect(url_for('cobros_pagos', tipo=tipo))
+
+    try:
+        with get_cursor() as cur:
+            cur.execute("""
+                INSERT INTO cuentas_corrientes (estudio_id, nombre, cuit, tipo)
+                VALUES (%s, %s, %s, %s)
+            """, (estudio_id, nombre, cuit, tipo))
+        flash(f'Cuenta de {nombre} creada.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+    return redirect(url_for('cobros_pagos', tipo=tipo))
+
+
+@app.route('/cobros-pagos/movimiento', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def cc_movimiento():
+    """Registrar movimiento en cuenta corriente."""
+    from src.cobros_pagos import registrar_movimiento
+    from decimal import Decimal
+
+    estudio_id = g.user['estudio_id']
+    cuenta_id = request.form.get('cuenta_id', type=int)
+    tipo_mov = request.form.get('tipo_mov')
+    fecha = request.form.get('fecha')
+    monto = Decimal(request.form.get('monto', '0'))
+    descripcion = request.form.get('descripcion', '').strip()
+
+    # Facturas y ND son debe, cobros/pagos y NC son haber
+    if tipo_mov in ('factura', 'nota_debito'):
+        debe, haber = monto, Decimal('0')
+    else:
+        debe, haber = Decimal('0'), monto
+
+    try:
+        with get_cursor() as cur:
+            registrar_movimiento(cur, cuenta_id, estudio_id, fecha,
+                                tipo_mov, debe, haber, descripcion)
+        flash('Movimiento registrado.', 'success')
+    except Exception as e:
+        flash(f'Error: {e}', 'error')
+    return redirect(url_for('cobros_pagos'))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INGRESOS BRUTOS — CM03/CM05
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/iibb')
+@login_required
+@role_required('admin', 'contador')
+def iibb_dashboard():
+    """Dashboard de Ingresos Brutos."""
+    estudio_id = g.user['estudio_id']
+
+    with get_cursor() as cur:
+        cur.execute("""
+            SELECT id, apellido, nombres, cuit FROM clientes
+            WHERE estudio_id = %s AND condicion_iva = 'IVA Responsable Inscripto'
+            ORDER BY apellido, nombres
+        """, (estudio_id,))
+        clientes = cur.fetchall()
+
+        cur.execute("""
+            SELECT * FROM iibb_declaraciones
+            WHERE estudio_id = %s
+            ORDER BY periodo DESC LIMIT 20
+        """, (estudio_id,))
+        declaraciones = cur.fetchall()
+
+    return render_template('iibb.html', clientes=clientes,
+                         declaraciones=declaraciones, cm03=None)
+
+
+@app.route('/iibb/cm03', methods=['POST'])
+@login_required
+@role_required('admin', 'contador')
+def iibb_cm03():
+    """Calcular CM03 para un cliente y período."""
+    from src.iibb import calcular_cm03
+    estudio_id = g.user['estudio_id']
+    cliente_id = request.form.get('cliente_id', type=int)
+    periodo = request.form.get('periodo', '').strip()
+
+    cm03 = None
+    try:
+        with get_cursor() as cur:
+            cm03 = calcular_cm03(cur, estudio_id, cliente_id, periodo)
+
+            # Listar clientes para el form
+            cur.execute("""
+                SELECT id, apellido, nombres, cuit FROM clientes
+                WHERE estudio_id = %s AND condicion_iva = 'IVA Responsable Inscripto'
+                ORDER BY apellido, nombres
+            """, (estudio_id,))
+            clientes = cur.fetchall()
+
+            cur.execute("""
+                SELECT * FROM iibb_declaraciones
+                WHERE estudio_id = %s ORDER BY periodo DESC LIMIT 20
+            """, (estudio_id,))
+            declaraciones = cur.fetchall()
+
+    except Exception as e:
+        flash(f'Error calculando CM03: {e}', 'error')
+        clientes = []
+        declaraciones = []
+
+    return render_template('iibb.html', clientes=clientes,
+                         declaraciones=declaraciones, cm03=cm03)
+
+
+@app.route('/padron/consultar')
+@login_required
+@role_required('admin', 'contador')
+def padron_consultar():
+    """API: consulta un CUIT en el padrón público de ARCA."""
+    from src.padron_arca import consultar_padron_publico
+
+    cuit = request.args.get('cuit', '').strip()
+    if not cuit:
+        return jsonify({'error': 'Debe ingresar un CUIT'}), 400
+
+    resultado = consultar_padron_publico(cuit)
+    if resultado.get('error'):
+        return jsonify(resultado), 400
+
+    return jsonify(resultado), 200
+
+
 if __name__ == '__main__':
     app.run(debug=True)
 

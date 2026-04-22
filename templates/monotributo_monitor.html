@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Monitor Monotributo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        .progress-bar { transition: width 0.8s ease-in-out; }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Monitor Monotributo</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+            <div class="glass rounded-xl p-4 border-l-4 {{ 'border-green-500' if cat == 'success' else 'border-red-500' }}">
+                <p class="{{ 'text-green-700' if cat == 'success' else 'text-red-700' }}">{{ msg }}</p>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <!-- Summary -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {% set total = monitores|length %}
+            {% set alertas = monitores|selectattr('status.alerta')|list|length %}
+            {% set peligro = monitores|selectattr('status.alerta', 'equalto', 'danger')|list|length + monitores|selectattr('status.alerta', 'equalto', 'exceeded')|list|length %}
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-3xl font-bold text-slate-800">{{ total }}</div>
+                <div class="text-sm text-slate-500">Monotributistas</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-3xl font-bold text-green-600">{{ total - alertas }}</div>
+                <div class="text-sm text-slate-500">Sin alerta</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-3xl font-bold text-amber-600">{{ alertas - peligro }}</div>
+                <div class="text-sm text-slate-500">Atencion (80%+)</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-3xl font-bold text-red-600">{{ peligro }}</div>
+                <div class="text-sm text-slate-500">Peligro (90%+)</div>
+            </div>
+        </div>
+
+        <!-- Client cards -->
+        {% if monitores %}
+        <div class="space-y-3">
+            {% for m in monitores|sort(attribute='status.porcentaje', reverse=true) %}
+            {% set s = m.status %}
+            {% set c = m.cliente %}
+            <div class="glass rounded-xl shadow-xl p-5 border-l-4
+                {% if s.alerta == 'exceeded' %}border-red-600
+                {% elif s.alerta == 'danger' %}border-red-400
+                {% elif s.alerta == 'warning' %}border-amber-400
+                {% else %}border-green-400{% endif %}">
+
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <div>
+                        <span class="font-bold text-slate-800">{{ c.apellido }}, {{ c.nombres }}</span>
+                        {% if c.cuit %}<span class="text-slate-400 text-sm ml-2">{{ c.cuit }}</span>{% endif %}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">Cat. {{ s.categoria }}</span>
+                        {% if s.alerta == 'exceeded' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700 animate-pulse">EXCEDIDO</span>
+                        {% elif s.alerta == 'danger' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-700">PELIGRO</span>
+                        {% elif s.alerta == 'warning' %}
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">ATENCION</span>
+                        {% endif %}
+                        {% if s.categoria_sugerida %}
+                        <span class="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">Sugerir: {{ s.categoria_sugerida }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Progress bar -->
+                <div class="w-full bg-slate-200 rounded-full h-4 mb-2 overflow-hidden">
+                    <div class="progress-bar h-full rounded-full
+                        {% if s.porcentaje >= 100 %}bg-red-500
+                        {% elif s.porcentaje >= 90 %}bg-red-400
+                        {% elif s.porcentaje >= 80 %}bg-amber-400
+                        {% else %}bg-green-500{% endif %}"
+                         style="width: {{ [s.porcentaje, 100]|min }}%">
+                    </div>
+                </div>
+
+                <div class="flex justify-between text-sm text-slate-500">
+                    <span>Facturado 12m: <strong class="text-slate-800">${{ "{:,.0f}".format(s.facturado_12m) }}</strong></span>
+                    <span>Tope anual: ${{ "{:,.0f}".format(s.tope_anual) }}</span>
+                    <span class="font-bold
+                        {% if s.porcentaje >= 90 %}text-red-600
+                        {% elif s.porcentaje >= 80 %}text-amber-600
+                        {% else %}text-green-600{% endif %}">{{ s.porcentaje }}%</span>
+                </div>
+                {% if s.meses_datos < 12 and s.meses_datos > 0 %}
+                <div class="text-xs text-slate-400 mt-1">
+                    Datos de {{ s.meses_datos }} mes{{ 'es' if s.meses_datos > 1 }} — proyección a 12 meses
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass rounded-xl shadow-xl p-8 text-center text-slate-500">
+            No hay clientes monotributistas registrados. Agregue clientes con condicion IVA "Monotributo" para monitorearlos.
+        </div>
+        {% endif %}
+
+        <!-- Register monthly billing -->
+        {% if monitores %}
+        <div class="glass rounded-xl shadow-xl p-6">
+            <h3 class="text-lg font-bold text-slate-800 mb-4">Registrar facturacion mensual</h3>
+            <form action="{{ url_for('monotributo_registrar') }}" method="POST" class="flex flex-col sm:flex-row gap-3 items-end">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="flex-1">
+                    <label class="block text-sm text-slate-600 mb-1">Cliente</label>
+                    <select name="cliente_id" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                        {% for m in monitores %}
+                        <option value="{{ m.cliente.id }}">{{ m.cliente.apellido }}, {{ m.cliente.nombres }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-600 mb-1">Periodo</label>
+                    <input type="month" name="periodo" required class="px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm text-slate-600 mb-1">Monto facturado</label>
+                    <input type="number" name="monto" step="0.01" min="0" required placeholder="0.00"
+                           class="px-3 py-2 rounded-lg border border-slate-300 text-sm w-40">
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm">
+                    Registrar
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        <!-- Categories reference -->
+        <details class="glass rounded-xl shadow-xl p-6">
+            <summary class="text-sm font-bold text-slate-400 uppercase tracking-wider cursor-pointer">
+                Tabla de categorias vigentes
+            </summary>
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-4 py-2 text-left">Categoria</th>
+                            <th class="px-4 py-2 text-right">Tope anual</th>
+                            <th class="px-4 py-2 text-right">Tope mensual (ref.)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for cat in categorias %}
+                        <tr>
+                            <td class="px-4 py-2 font-bold text-slate-700">{{ cat.letra }}</td>
+                            <td class="px-4 py-2 text-right text-slate-600">${{ "{:,.2f}".format(cat.tope_anual) }}</td>
+                            <td class="px-4 py-2 text-right text-slate-400">${{ "{:,.2f}".format(cat.tope_mensual) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+
+    </main>
+</body>
+</html>

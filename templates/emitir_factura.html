@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Emitir Factura</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Emitir Factura Electronica</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for cat, msg in messages %}
+            <div class="glass rounded-xl p-4 border-l-4 {{ 'border-green-500' if cat == 'success' else 'border-red-500' }}">
+                <p class="{{ 'text-green-700' if cat == 'success' else 'text-red-700' }}">{{ msg }}</p>
+            </div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <!-- Resultado CAE -->
+        {% if resultado %}
+        <div class="glass rounded-xl shadow-xl p-6 border-l-4 {{ 'border-green-500' if resultado.success else 'border-red-500' }}">
+            {% if resultado.success %}
+            <h3 class="text-xl font-bold text-green-700 mb-3">Comprobante autorizado</h3>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div><span class="text-slate-400">Tipo:</span><br><strong>{{ resultado.tipo_comprobante_desc }}</strong></div>
+                <div><span class="text-slate-400">Numero:</span><br><strong>{{ resultado.punto_venta }}-{{ "%08d"|format(resultado.numero) }}</strong></div>
+                <div><span class="text-slate-400">CAE:</span><br><strong class="text-green-700">{{ resultado.cae }}</strong></div>
+                <div><span class="text-slate-400">Vto CAE:</span><br><strong>{{ resultado.cae_vto }}</strong></div>
+                <div><span class="text-slate-400">Total:</span><br><strong>${{ "{:,.2f}".format(resultado.importe_total) }}</strong></div>
+                <div><span class="text-slate-400">Receptor:</span><br><strong>{{ resultado.receptor_nombre or resultado.cuit_receptor }}</strong></div>
+            </div>
+            {% else %}
+            <h3 class="text-xl font-bold text-red-700 mb-3">Comprobante rechazado</h3>
+            {% if resultado.errores %}
+            <ul class="list-disc list-inside text-red-600 text-sm">
+                {% for err in resultado.errores %}<li>{{ err }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <form action="{{ url_for('emitir_factura_post') }}" method="POST" id="formFactura">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- Tipo y punto de venta -->
+            <div class="glass rounded-xl shadow-xl p-6 space-y-4">
+                <h2 class="text-lg font-bold text-slate-800">Datos del comprobante</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo de comprobante</label>
+                        <select name="tipo_comprobante" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" id="tipoCbte">
+                            <option value="11">Factura C</option>
+                            <option value="1">Factura A</option>
+                            <option value="6">Factura B</option>
+                            <option value="12">Nota de Debito C</option>
+                            <option value="13">Nota de Credito C</option>
+                            <option value="2">Nota de Debito A</option>
+                            <option value="3">Nota de Credito A</option>
+                            <option value="7">Nota de Debito B</option>
+                            <option value="8">Nota de Credito B</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Punto de venta</label>
+                        <input type="number" name="punto_venta" min="1" max="99999" value="1" required
+                               class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Concepto</label>
+                        <select name="concepto" required class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" id="concepto">
+                            <option value="1">Productos</option>
+                            <option value="2" selected>Servicios</option>
+                            <option value="3">Productos y Servicios</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Receptor -->
+            <div class="glass rounded-xl shadow-xl p-6 space-y-4 mt-4">
+                <h2 class="text-lg font-bold text-slate-800">Receptor</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Tipo documento</label>
+                        <select name="tipo_doc_receptor" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                            <option value="80">CUIT</option>
+                            <option value="86">CUIL</option>
+                            <option value="96">DNI</option>
+                            <option value="99">Sin identificar</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Nro documento</label>
+                        <input type="text" name="nro_doc_receptor" placeholder="20-12345678-9"
+                               class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Nombre / Razon social</label>
+                        <input type="text" name="receptor_nombre" placeholder="Nombre del receptor"
+                               class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Fechas servicio -->
+            <div id="fechasServicio" class="glass rounded-xl shadow-xl p-6 space-y-4 mt-4">
+                <h2 class="text-lg font-bold text-slate-800">Periodo de servicio</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Desde</label>
+                        <input type="date" name="fecha_serv_desde" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Hasta</label>
+                        <input type="date" name="fecha_serv_hasta" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">Vto pago</label>
+                        <input type="date" name="fecha_vto_pago" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Items -->
+            <div class="glass rounded-xl shadow-xl p-6 space-y-4 mt-4">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-bold text-slate-800">Items</h2>
+                    <button type="button" onclick="agregarItem()"
+                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium transition">
+                        + Agregar item
+                    </button>
+                </div>
+                <div id="itemsContainer" class="space-y-3">
+                    <!-- Items se agregan dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Totals -->
+            <div class="glass rounded-xl shadow-xl p-6 mt-4">
+                <div class="flex justify-between items-center">
+                    <div class="space-y-1 text-sm">
+                        <div class="text-slate-500">Neto: <span id="totalNeto" class="font-bold text-slate-800">$0.00</span></div>
+                        <div class="text-slate-500" id="totalIvaRow">IVA: <span id="totalIva" class="font-bold text-slate-800">$0.00</span></div>
+                        <div class="text-lg font-bold text-slate-800">Total: <span id="totalFinal" class="text-blue-600">$0.00</span></div>
+                    </div>
+                    <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-bold transition text-lg"
+                            onclick="return confirm('Confirma la emision del comprobante? Esta accion no se puede deshacer.')">
+                        Solicitar CAE
+                    </button>
+                </div>
+            </div>
+
+        </form>
+
+        <!-- Últimos emitidos -->
+        {% if ultimos %}
+        <div class="glass rounded-xl shadow-xl p-6 mt-4">
+            <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Ultimos comprobantes emitidos</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-slate-100">
+                        <tr>
+                            <th class="px-3 py-2 text-left">Tipo</th>
+                            <th class="px-3 py-2 text-left">Numero</th>
+                            <th class="px-3 py-2 text-left">Receptor</th>
+                            <th class="px-3 py-2 text-right">Total</th>
+                            <th class="px-3 py-2 text-left">CAE</th>
+                            <th class="px-3 py-2 text-left">Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        {% for c in ultimos %}
+                        <tr>
+                            <td class="px-3 py-2">{{ c.tipo_desc or '' }}</td>
+                            <td class="px-3 py-2 font-mono">{{ c.punto_venta }}-{{ "%08d"|format(c.numero_desde) }}</td>
+                            <td class="px-3 py-2">{{ c.receptor_nombre or c.cuit_receptor or '-' }}</td>
+                            <td class="px-3 py-2 text-right">${{ "{:,.2f}".format(c.importe_total) }}</td>
+                            <td class="px-3 py-2 font-mono text-xs">{{ c.cae or '-' }}</td>
+                            <td class="px-3 py-2">{{ c.fecha_emision }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </main>
+
+    <script>
+    let itemCount = 0;
+    const tiposCbte = document.getElementById('tipoCbte');
+    const conceptoSel = document.getElementById('concepto');
+
+    function agregarItem() {
+        const n = itemCount++;
+        const container = document.getElementById('itemsContainer');
+        const esC = [11, 12, 13].includes(parseInt(tiposCbte.value));
+
+        const div = document.createElement('div');
+        div.className = 'grid grid-cols-12 gap-2 items-end p-3 bg-slate-50 rounded-lg';
+        div.id = `item-${n}`;
+        div.innerHTML = `
+            <div class="col-span-5">
+                <label class="block text-xs text-slate-500 mb-1">Descripcion</label>
+                <input type="text" name="item_desc_${n}" required placeholder="Descripcion"
+                       class="w-full px-2 py-1.5 rounded border border-slate-300 text-sm">
+            </div>
+            <div class="col-span-1">
+                <label class="block text-xs text-slate-500 mb-1">Cant</label>
+                <input type="number" name="item_cant_${n}" value="1" min="0.01" step="0.01"
+                       class="w-full px-2 py-1.5 rounded border border-slate-300 text-sm item-calc" onchange="recalcular()">
+            </div>
+            <div class="col-span-2">
+                <label class="block text-xs text-slate-500 mb-1">Precio unit.</label>
+                <input type="number" name="item_precio_${n}" step="0.01" min="0" required placeholder="0.00"
+                       class="w-full px-2 py-1.5 rounded border border-slate-300 text-sm item-calc" onchange="recalcular()">
+            </div>
+            <div class="col-span-2 ${esC ? 'hidden' : ''}">
+                <label class="block text-xs text-slate-500 mb-1">IVA</label>
+                <select name="item_iva_${n}" class="w-full px-2 py-1.5 rounded border border-slate-300 text-sm item-calc" onchange="recalcular()">
+                    <option value="5">21%</option>
+                    <option value="4">10.5%</option>
+                    <option value="6">27%</option>
+                    <option value="8">5%</option>
+                    <option value="9">2.5%</option>
+                    <option value="3">0%</option>
+                </select>
+            </div>
+            <div class="col-span-1">
+                <label class="block text-xs text-slate-500 mb-1">Subtotal</label>
+                <span class="text-sm font-bold text-slate-700" id="item-sub-${n}">$0</span>
+            </div>
+            <div class="col-span-1 text-right">
+                <button type="button" onclick="eliminarItem(${n})" class="text-red-400 hover:text-red-600 text-lg">&times;</button>
+            </div>
+        `;
+        container.appendChild(div);
+        recalcular();
+    }
+
+    function eliminarItem(n) {
+        const el = document.getElementById(`item-${n}`);
+        if (el) el.remove();
+        recalcular();
+    }
+
+    const alicuotas = {3: 0, 4: 10.5, 5: 21, 6: 27, 8: 5, 9: 2.5};
+
+    function recalcular() {
+        let neto = 0, iva = 0;
+        const esC = [11, 12, 13].includes(parseInt(tiposCbte.value));
+
+        for (let i = 0; i < itemCount; i++) {
+            const row = document.getElementById(`item-${i}`);
+            if (!row) continue;
+            const cant = parseFloat(row.querySelector(`[name=item_cant_${i}]`).value) || 0;
+            const precio = parseFloat(row.querySelector(`[name=item_precio_${i}]`).value) || 0;
+            const sub = cant * precio;
+            neto += sub;
+            document.getElementById(`item-sub-${i}`).textContent = '$' + sub.toLocaleString('es-AR', {minimumFractionDigits: 2});
+
+            if (!esC) {
+                const ivaId = parseInt(row.querySelector(`[name=item_iva_${i}]`).value);
+                iva += sub * (alicuotas[ivaId] || 0) / 100;
+            }
+        }
+
+        document.getElementById('totalNeto').textContent = '$' + neto.toLocaleString('es-AR', {minimumFractionDigits: 2});
+        document.getElementById('totalIva').textContent = '$' + iva.toLocaleString('es-AR', {minimumFractionDigits: 2});
+        document.getElementById('totalFinal').textContent = '$' + (neto + iva).toLocaleString('es-AR', {minimumFractionDigits: 2});
+        document.getElementById('totalIvaRow').style.display = esC ? 'none' : '';
+    }
+
+    // Toggle fechas servicio
+    conceptoSel.addEventListener('change', () => {
+        document.getElementById('fechasServicio').style.display = conceptoSel.value === '1' ? 'none' : '';
+    });
+
+    tiposCbte.addEventListener('change', recalcular);
+
+    // Add hidden field with item count
+    document.getElementById('formFactura').addEventListener('submit', () => {
+        let existing = document.querySelector('[name=item_count]');
+        if (!existing) {
+            existing = document.createElement('input');
+            existing.type = 'hidden';
+            existing.name = 'item_count';
+            document.getElementById('formFactura').appendChild(existing);
+        }
+        existing.value = itemCount;
+    });
+
+    // Start with one item
+    agregarItem();
+    conceptoSel.dispatchEvent(new Event('change'));
+    </script>
+</body>
+</html>

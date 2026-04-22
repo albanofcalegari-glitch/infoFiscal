@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfoFiscal - Liquidacion IVA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass { background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-900">
+    <div class="fixed inset-0 z-0">
+        <img src="https://images.unsplash.com/photo-1556742044-3c52d6e88c62?auto=format&fit=crop&w=1920&q=80" alt="" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-slate-900/60"></div>
+    </div>
+
+    <header class="relative z-10 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="{{ url_for('home') }}" class="text-white/60 hover:text-white transition text-sm">&larr; Inicio</a>
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="InfoFiscal" class="h-10">
+            </div>
+            <h1 class="text-white text-lg font-semibold">Liquidacion IVA</h1>
+        </div>
+    </header>
+
+    <main class="relative z-10 max-w-5xl mx-auto px-4 py-8 space-y-6">
+
+        <!-- Period selector -->
+        <div class="glass rounded-xl shadow-xl p-6">
+            <form method="GET" action="{{ url_for('liquidacion_iva') }}" class="flex flex-col sm:flex-row items-end gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Periodo</label>
+                    <input type="month" name="periodo" value="{{ periodo }}" required
+                           class="px-4 py-2 rounded-lg border border-slate-300 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 mb-1">Saldo a favor anterior</label>
+                    <input type="number" name="saldo_anterior" step="0.01" value="{{ saldo_anterior }}" placeholder="0.00"
+                           class="px-4 py-2 rounded-lg border border-slate-300 text-sm w-40">
+                </div>
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition text-sm">
+                    Calcular
+                </button>
+            </form>
+        </div>
+
+        {% if posicion %}
+        {% set p = posicion %}
+
+        <!-- KPI cards -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-sm text-slate-400">Debito fiscal</div>
+                <div class="text-2xl font-bold text-red-600">${{ "{:,.2f}".format(p.total_debito) }}</div>
+                <div class="text-xs text-slate-400">{{ p.cant_ventas }} comprobante{{ 's' if p.cant_ventas != 1 }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-sm text-slate-400">Credito fiscal</div>
+                <div class="text-2xl font-bold text-green-600">${{ "{:,.2f}".format(p.total_credito) }}</div>
+                <div class="text-xs text-slate-400">{{ p.cant_compras }} comprobante{{ 's' if p.cant_compras != 1 }}</div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center">
+                <div class="text-sm text-slate-400">Saldo tecnico</div>
+                <div class="text-2xl font-bold {{ 'text-red-600' if p.saldo_tecnico > 0 else 'text-green-600' }}">
+                    ${{ "{:,.2f}".format(p.saldo_tecnico) }}
+                </div>
+            </div>
+            <div class="glass rounded-xl p-4 text-center border-2 {{ 'border-red-400' if p.resultado > 0 else 'border-green-400' }}">
+                <div class="text-sm text-slate-400">{{ 'A pagar' if p.resultado > 0 else 'Saldo a favor' }}</div>
+                <div class="text-2xl font-bold {{ 'text-red-600' if p.resultado > 0 else 'text-green-600' }}">
+                    ${{ "{:,.2f}".format(p.resultado|abs) }}
+                </div>
+                {% if p.saldo_anterior != 0 %}
+                <div class="text-xs text-slate-400">SF anterior: ${{ "{:,.2f}".format(p.saldo_anterior|abs) }}</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Detail tables -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Ventas -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Ventas (Debito Fiscal)</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-slate-500">Gravado</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_gravadas) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 21%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_iva_21) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 10.5%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_iva_105) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 27%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_iva_27) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Exento</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_exentas) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">No gravado</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.ventas_no_gravadas) }}</span></div>
+                    <hr class="border-slate-200">
+                    <div class="flex justify-between font-bold"><span>Total debito</span><span class="text-red-600">${{ "{:,.2f}".format(p.total_debito) }}</span></div>
+                </div>
+            </div>
+
+            <!-- Compras -->
+            <div class="glass rounded-xl shadow-xl p-6">
+                <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Compras (Credito Fiscal)</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-slate-500">Gravado</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_gravadas) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 21%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_iva_21) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 10.5%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_iva_105) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">IVA 27%</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_iva_27) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">Exento</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_exentas) }}</span></div>
+                    <div class="flex justify-between"><span class="text-slate-500">No gravado</span><span class="text-slate-800 font-medium">${{ "{:,.2f}".format(p.compras_no_gravadas) }}</span></div>
+                    <hr class="border-slate-200">
+                    <div class="flex justify-between font-bold"><span>Total credito</span><span class="text-green-600">${{ "{:,.2f}".format(p.total_credito) }}</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Libro IVA link -->
+        <div class="glass rounded-xl shadow-xl p-4 text-center">
+            <a href="{{ url_for('libro_iva_digital', periodo=periodo) }}"
+               class="text-blue-600 hover:text-blue-800 font-semibold text-sm">
+                Ver Libro IVA Digital completo &rarr;
+            </a>
+        </div>
+
+        {% else %}
+        <div class="glass rounded-xl shadow-xl p-8 text-center text-slate-500">
+            Seleccione un periodo para calcular la posicion de IVA.
+        </div>
+        {% endif %}
+
+    </main>
+</body>
+</html>
